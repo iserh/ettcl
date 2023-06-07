@@ -1,0 +1,36 @@
+-e .
+datasets
+evaluate
+scikit-learn
+scipy
+torch
+tqdm
+transformers
+
+# colbert
+-e ./ColBERT
+bitarray
+faiss-gpu
+gitpython
+ninja
+ujson
+
+# dev
+black
+flake8
+flake8-annotations
+flake8-black
+flake8-builtins
+flake8-isort
+Flake8-pyproject
+flake8-use-fstring
+isort
+reindent
+
+# testing
+pytest
+pytest-cov
+
+# notebooks
+notebook==7.0.0b3
+ipywidgets

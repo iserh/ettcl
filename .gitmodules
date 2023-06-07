@@ -1,0 +1,4 @@
+[submodule "ColBERT"]
+	path = ColBERT
+	url = git@github.com:iserh/ColBERT.git
+	branch = dev
