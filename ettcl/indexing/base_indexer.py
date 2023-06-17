@@ -1,25 +1,28 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable
 
-from ettcl.core.config import SetupConfig
-from ettcl.encoding.base_encoder import EncoderFactory
+from ettcl.encoding.base_encoder import BaseEncoder
+from ettcl.utils.utils import Devices
 
 
 @dataclass
-class IndexingArguments(SetupConfig):
-    nranks: int = 1
+class IndexerConfig:
     nbits: int = 2
-    dim: int = 128
+    kmeans_niters: int = None
 
 
 class BaseIndexer(ABC):
-    def __init__(
-        self, encoder_factory: EncoderFactory, args: IndexingArguments = IndexingArguments()
-    ) -> None:
-        self.encoder_factory = encoder_factory
-        self.args = args
+    def __init__(self, encoder: BaseEncoder, config: IndexerConfig = IndexerConfig()) -> None:
+        self.encoder = encoder
+        self.config = config
 
     @abstractmethod
-    def index(self, index_path: str, collection: list[str], resume: bool = False) -> None:
+    def index(
+        self,
+        index_path: str,
+        collection: list[str],
+        gpus: Devices = 0,
+        n_processes: int | None = None,
+        resume: bool = False,
+    ) -> None:
         pass

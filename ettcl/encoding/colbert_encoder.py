@@ -1,59 +1,124 @@
 import torch
-from colbert.infra.config.config import ColBERTConfig
-from colbert.infra.run import Run
-from colbert.modeling.checkpoint import Checkpoint
-from colbert.utils.utils import batch
+from datasets import Dataset
+from tqdm import tqdm
 
 from ettcl.encoding.base_encoder import BaseEncoder
+from ettcl.modeling.modeling_colbert import ColBERTModel
+from ettcl.modeling.tokenization_colbert import ColBERTTokenizer
 
 
 class ColBERTEncoder(BaseEncoder):
-    def __init__(
-        self, checkpoint: str, config: ColBERTConfig | None = None, use_gpu: bool = False
-    ) -> None:
-        super().__init__(use_gpu)
-        self.checkpoint_config = ColBERTConfig.load_from_checkpoint(checkpoint)
-        self.config: ColBERTConfig = ColBERTConfig.from_existing(self.checkpoint_config, config)
-        self.config.configure(checkpoint=checkpoint)
+    def __init__(self, model: ColBERTModel, tokenizer: ColBERTTokenizer) -> None:
+        super().__init__()
+        self.model = model
+        self.tokenizer = tokenizer
+        self.use_gpu = False
 
-        # only way to disable colbert's gpu usage is to limit the visible gpus (Usually the launcher does this by setting CUDA_VISIBLE_DEVICES)
-        if not self.use_gpu:
-            self.config.configure(total_visible_gpus=0)
+    @property
+    def embedding_dim(self) -> int:
+        return self.model.output_dimensionality
 
-        self.checkpoint = Checkpoint(checkpoint, colbert_config=self.config)
-        if self.use_gpu:
-            self.checkpoint.cuda()
+    def cuda(self) -> BaseEncoder:
+        self.model.cuda()
+        self.use_gpu = True
+        return self
 
-    def encode_passages(self, passages: list[str]) -> tuple[torch.FloatTensor, list[int]]:
-        Run().print(f"#> Encoding {len(passages)} passages..")
+    def cpu(self) -> BaseEncoder:
+        self.model.cpu()
+        self.use_gpu = False
+        return self
 
-        if len(passages) == 0:
-            return None, None
+    def encode_passages(
+        self, passages: list[str], batch_size: int = 128, to_cpu: bool = True
+    ) -> tuple[torch.FloatTensor, list[int]]:
+        assert len(passages) > 0, "No passages provided"
+
+        # TODO: Could sort by doc length to speed up encoding
+        input_data = Dataset.from_dict({"text": passages})
+        input_data.set_format("pt")
+        input_data = input_data.map(
+            lambda batch: self.tokenizer(
+                batch["text"],
+                mode="doc",
+                add_special_tokens=True,
+                padding="longest",
+                truncation="longest_first",
+                return_tensors="pt",
+            ),
+            batched=True,
+            batch_size=1024
+            - (
+                1024 % batch_size
+            ),  # floor to whole of batch_size (important because of padding='longest')
+        )
+        input_data = input_data.remove_columns("text")
 
         with torch.inference_mode():
-            embs, doclens = [], []
+            all_embs, all_doclens = [], []
+            for input_dict in tqdm(
+                input_data.iter(batch_size), total=len(input_data) // batch_size, desc="Encoding"
+            ):
+                if self.use_gpu:
+                    input_dict = {k: t.cuda() for k, t in input_dict.items()}
 
-            # Batch here to avoid OOM from storing intermediate embeddings on GPU.
-            # Storing on the GPU helps with speed of masking, etc.
-            # But ideally this batching happens internally inside docFromText.
-            for passages_batch in batch(passages, self.config.bsize * 50):
-                embs_, doclens_ = self.checkpoint.docFromText(
-                    passages_batch,
-                    bsize=self.config.bsize,
-                    keep_dims="flatten",
-                    showprogress=not self.use_gpu,
-                )
-                embs.append(embs_)
-                doclens.extend(doclens_)
+                mask = input_dict["attention_mask"]
 
-            embs = torch.cat(embs)
+                D = self.model(**input_dict)[0]
 
-        return embs, doclens
+                if D.is_cuda:
+                    D = D.half()
 
-    def encode_queries(self, queries: list[str]) -> torch.FloatTensor:
-        bsize = 128 if len(queries) > 128 else None
+                D = D.view(-1, D.shape[-1])[mask.bool().flatten()]
+                doclens = mask.sum(-1)
 
-        self.checkpoint.query_tokenizer.query_maxlen = self.config.query_maxlen
-        Q = self.checkpoint.queryFromText(queries, bsize=bsize, showprogress=not self.use_gpu)
+                if to_cpu:
+                    D, doclens = D.cpu(), doclens.cpu()
 
-        return Q
+                all_embs.append(D)
+                all_doclens.append(doclens)
+
+            all_embs = torch.cat(all_embs)
+            all_doclens = torch.cat(all_doclens).tolist()
+
+        return all_embs, all_doclens
+
+    def encode_queries(
+        self, queries: list[str], batch_size: int = 128, to_cpu: bool = False
+    ) -> torch.FloatTensor:
+        assert len(queries) > 0, "No queries provided"
+
+        input_data = Dataset.from_dict({"text": queries})
+        input_data.set_format("pt")
+        input_data = input_data.map(
+            lambda batch: self.tokenizer(
+                batch["text"],
+                mode="query",
+                add_special_tokens=True,
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt",
+            ),
+            batched=True,
+            batch_size=1024
+            - (
+                1024 % batch_size
+            ),  # floor to whole of batch_size (important because of padding='longest')
+        )
+        input_data = input_data.remove_columns("text")
+
+        with torch.inference_mode():
+            all_embs = []
+            for input_dict in input_data.iter(batch_size):
+                if self.use_gpu:
+                    input_dict = {k: t.cuda() for k, t in input_dict.items()}
+
+                Q = self.model(**input_dict)[0]
+
+                if to_cpu:
+                    Q = Q.cpu()
+
+                all_embs.append(Q)
+
+            all_embs = torch.cat(all_embs)
+
+        return all_embs

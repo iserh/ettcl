@@ -1,4 +1,5 @@
 -e .
+accelerate
 datasets
 evaluate
 scikit-learn

@@ -27,7 +27,7 @@ use_parentheses = true
 
 [tool.flake8]
 select = ["A", "ANN", "BLK", "FS", "I", "C90", "E", "F", "W"]
-ignore = ["ANN002", "ANN003", "ANN101", "ANN102", "ANN401", "E203", "W503"]
+ignore = ["ANN002", "ANN003", "ANN101", "ANN102", "ANN401", "E203", "E741", "W503"]
 max-complexity = 16
 max-line-length = 100
 docstring-convention = "google"

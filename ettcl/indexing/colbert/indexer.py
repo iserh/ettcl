@@ -1,45 +1,46 @@
 import multiprocessing as mp
 import os
-import time
 from pathlib import Path
 
-from colbert.data.collection import Collection
-from colbert.infra.config.config import ColBERTConfig, RunConfig
+from colbert.infra.config.config import RunConfig
 from colbert.infra.launcher import Launcher
 from colbert.infra.run import Run
-from colbert.utils.utils import print_message
 
 from ettcl.indexing.base_indexer import BaseIndexer
 from ettcl.indexing.colbert.collection_indexer import index
+from ettcl.utils.utils import Devices, to_gpu_list
+from ettcl.indexing.colbert.settings import _IndexerSettings
 
 
 class ColBERTIndexer(BaseIndexer):
     def index(
-        self, index_path: str, collection: Collection | list[str] | str, resume: bool = False
+        self,
+        index_path: str,
+        collection: list[str],
+        gpus: Devices = 0,
+        n_processes: int | None = None,
+        resume: bool = False,
     ) -> None:
         index_path = Path(index_path)
+        gpus = to_gpu_list(gpus)
 
-        run_config = RunConfig(
-            nranks=self.args.nranks,
-            gpus=self.args.gpus_,
-        )
+        # setup number of multiprocessing processes
+        if len(gpus) > 0:
+            # set n_proc to number of gpus at max
+            n_processes = min(n_processes, len(gpus)) if n_processes is not None else len(gpus)
+            # # if only device:0 is selected we can run single processed (=0)
+            # n_processes = 0 if gpus == [0] else n_processes
+        else:
+            # default value for n_proc is to run single processed (=0)
+            n_processes = n_processes or 0
 
-        # only way to disable colbert's gpu usage is to limit the visible gpus
-        # (Usually the launcher does this by setting CUDA_VISIBLE_DEVICES)
-        if len(self.args.gpus_) == 0:
-            run_config.configure(total_visible_gpus=0)
-
-        with Run().context(run_config):
-            # if isinstance(self.encoder.config, ColBERTConfig):
-            #     checkpoint_config = ColBERTConfig.from_existing(self.encoder.config)
-
-            config = ColBERTConfig.from_existing(Run().config)
-
+        with Run().context(RunConfig(nranks=(max(1, n_processes)), gpus=gpus)):
+            config = _IndexerSettings.from_existing(Run().config)
             config.configure(
                 resume=resume,
                 index_path=str(index_path),
-                nbits=self.args.nbits,
-                dim=self.args.dim,
+                nbits=self.config.nbits,
+                dim=self.encoder.embedding_dim,
                 bsize=64,
                 partitions=None,
             )
@@ -48,18 +49,20 @@ class ColBERTIndexer(BaseIndexer):
             if not resume:
                 self.erase(index_path)
 
-            if config.nranks > 1:
+            if n_processes > 0:
+                # launch as single process
                 self.__launch(collection, config)
             else:
-                index(config, self.encoder_factory, collection, [list()])
+                # launch multiprocessed
+                index(config, self.encoder, collection, [list()])
 
-    def __launch(self, collection: Collection | list[str], config: ColBERTConfig) -> None:
+    def __launch(self, collection: list[str], config: _IndexerSettings) -> None:
         manager = mp.Manager()
         shared_lists = [manager.list() for _ in range(config.nranks)]
 
         # Encodes collection into index using the CollectionIndexer class
         launcher = Launcher(index)
-        launcher.launch(config, self.encoder_factory, collection, shared_lists)
+        launcher.launch(config, self.encoder, collection, shared_lists)
 
     @staticmethod
     def erase(index_path: str) -> list[str]:
@@ -77,10 +80,7 @@ class ColBERTIndexer(BaseIndexer):
                 deleted.append(filename)
 
         if len(deleted):
-            print_message(
-                f"#> Will delete {len(deleted)} files already at {index_path} in 20 seconds..."
-            )
-            time.sleep(20)
+            print(f"#> Will delete {len(deleted)} files already at {index_path}")
 
             for filename in deleted:
                 os.remove(filename)
