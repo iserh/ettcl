@@ -22,4 +22,4 @@ if __name__ == "__main__":
     indexer_config = IndexerConfig(nbits=2)
     index_path = Path(index_dir) / f"{Path(model_path).name}.{indexer_config.nbits}bits"
     indexer = ColBERTIndexer(encoder, indexer_config)
-    indexer.index(index_path, train_dataset["text"], gpus=1)
+    indexer.index(index_path, train_dataset["text"], gpus=[1])

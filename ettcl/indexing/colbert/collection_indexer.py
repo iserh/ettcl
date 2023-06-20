@@ -14,6 +14,7 @@ def index(
 ) -> None:
     indexer = CollectionIndexerWrapper(config=config, encoder=encoder, collection=collection)
     indexer.run(shared_lists)
+    encoder.cpu()
 
 
 class CollectionIndexerWrapper(CollectionIndexer):

@@ -31,6 +31,9 @@ class ColbertRerankingOutput(ModelOutput):
 
 class ColBERTModel(PreTrainedModel):
     config_class = ColBERTConfig
+    _keys_to_ignore_on_load_missing = set()
+    _keys_to_ignore_on_load_unexpected = set(["default_labels"])
+    _keys_to_ignore_on_save = set()
 
     def __init__(
         self,
@@ -71,13 +74,20 @@ class ColBERTModel(PreTrainedModel):
     ):
         config = kwargs.pop("config", None)
         if config is None:
-            config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+            base_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+        else:
+            base_config = AutoConfig.for_model(**config.to_dict())
 
-        base_model_cls: type[PreTrainedModel] = _get_model_class(config, AutoModel._model_mapping)
+        base_model_cls: type[PreTrainedModel] = _get_model_class(base_config, AutoModel._model_mapping)
 
-        cls._keys_to_ignore_on_load_missing = base_model_cls._keys_to_ignore_on_load_missing
-        cls._keys_to_ignore_on_load_unexpected = base_model_cls._keys_to_ignore_on_load_unexpected
-        cls._keys_to_ignore_on_save = base_model_cls._keys_to_ignore_on_save
+        if base_model_cls._keys_to_ignore_on_load_missing is not None:
+            cls._keys_to_ignore_on_load_missing.update(base_model_cls._keys_to_ignore_on_load_missing)
+
+        if base_model_cls._keys_to_ignore_on_load_unexpected is not None:
+            cls._keys_to_ignore_on_load_unexpected.update(base_model_cls._keys_to_ignore_on_load_unexpected)
+
+        if base_model_cls._keys_to_ignore_on_save is not None:
+            cls._keys_to_ignore_on_save.update(base_model_cls._keys_to_ignore_on_save)
 
         return super(ColBERTModel, cls).from_pretrained(
             pretrained_model_name_or_path, *model_args, config=config, **kwargs
@@ -137,6 +147,9 @@ class ColBERTModel(PreTrainedModel):
 
 
 class ColBERTForReranking(ColBERTModel):
+    _keys_to_ignore_on_load_missing = set(["default_labels"])
+    _keys_to_ignore_on_save = set(["default_labels"])
+
     def __init__(
         self, config: ColBERTConfig, base_model_class: type[PreTrainedModel] = None
     ) -> None:
@@ -216,7 +229,7 @@ class ColBERTForReranking(ColBERTModel):
         return ColbertRerankingOutput(
             scores=scores,
             unreduced_scores=unreduced_scores,
-            loss=loss,
+            loss=loss.unsqueeze(0),
             hidden_states=outputs.hidden_states,
         )
 

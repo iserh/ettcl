@@ -5,6 +5,7 @@ from pathlib import Path
 from colbert.infra.config.config import RunConfig
 from colbert.infra.launcher import Launcher
 from colbert.infra.run import Run
+import torch
 
 from ettcl.indexing.base_indexer import BaseIndexer
 from ettcl.indexing.colbert.collection_indexer import index
@@ -18,21 +19,24 @@ class ColBERTIndexer(BaseIndexer):
         index_path: str,
         collection: list[str],
         gpus: Devices = 0,
-        n_processes: int | None = None,
+        n_processes: int = -1,
         resume: bool = False,
     ) -> None:
         index_path = Path(index_path)
         gpus = to_gpu_list(gpus)
+        use_gpu = len(gpus) > 0
 
         # setup number of multiprocessing processes
-        if len(gpus) > 0:
+        if use_gpu:
             # set n_proc to number of gpus at max
-            n_processes = min(n_processes, len(gpus)) if n_processes is not None else len(gpus)
-            # # if only device:0 is selected we can run single processed (=0)
-            # n_processes = 0 if gpus == [0] else n_processes
+            n_processes = min(n_processes, len(gpus)) if n_processes > 0 else len(gpus)
+            if n_processes == 1:
+                # store current device and set the selected one as default
+                prev_device = torch.cuda.current_device()
+                torch.cuda.set_device(gpus[0])
         else:
-            # default value for n_proc is to run single processed (=0)
-            n_processes = n_processes or 0
+            # default value for n_proc is to run single processed (=1)
+            n_processes = n_processes if n_processes > 0 else 1
 
         with Run().context(RunConfig(nranks=(max(1, n_processes)), gpus=gpus)):
             config = _IndexerSettings.from_existing(Run().config)
@@ -49,12 +53,15 @@ class ColBERTIndexer(BaseIndexer):
             if not resume:
                 self.erase(index_path)
 
-            if n_processes > 0:
-                # launch as single process
+            if n_processes > 1:
+                # launch multiprocessed
                 self.__launch(collection, config)
             else:
-                # launch multiprocessed
+                # launch as single process
                 index(config, self.encoder, collection, [list()])
+                if use_gpu:
+                    # set back to previous device
+                    torch.cuda.set_device(prev_device)
 
     def __launch(self, collection: list[str], config: _IndexerSettings) -> None:
         manager = mp.Manager()

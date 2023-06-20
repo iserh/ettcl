@@ -29,7 +29,7 @@ class ColBERTEncoder(BaseEncoder):
         return self
 
     def encode_passages(
-        self, passages: list[str], batch_size: int = 128, to_cpu: bool = True
+        self, passages: list[str], batch_size: int = 256, to_cpu: bool = True
     ) -> tuple[torch.FloatTensor, list[int]]:
         assert len(passages) > 0, "No passages provided"
 
@@ -83,7 +83,7 @@ class ColBERTEncoder(BaseEncoder):
         return all_embs, all_doclens
 
     def encode_queries(
-        self, queries: list[str], batch_size: int = 128, to_cpu: bool = False
+        self, queries: list[str], batch_size: int = 256, to_cpu: bool = False
     ) -> torch.FloatTensor:
         assert len(queries) > 0, "No queries provided"
 
@@ -108,7 +108,9 @@ class ColBERTEncoder(BaseEncoder):
 
         with torch.inference_mode():
             all_embs = []
-            for input_dict in input_data.iter(batch_size):
+            for input_dict in tqdm(
+                input_data.iter(batch_size), total=len(input_data) // batch_size, desc="Encoding"
+            ):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
 

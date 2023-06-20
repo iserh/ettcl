@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import os
 from datasets import Dataset
 from sklearn.preprocessing import MinMaxScaler
 from tqdm import tqdm
@@ -81,70 +82,99 @@ def create_triples_random(
     return dataset.add_column("triple", triples)
 
 
-def create_triples_ranked(
-    dataset: Dataset,
-    searcher: BaseSearcher,
-    k: int,
-    sampling_mode: SamplingMode = "uniform",
-    nway: int = 2,
-) -> Dataset:
-    # holds corresponding label for all passages in dataset
-    passage_labels = np.array(dataset["label"], dtype=np.int64)
-    # for each class holds pids that have that class assigned as label
-    label_pids = {l: np.where(passage_labels == l)[0] for l in np.unique(passage_labels)}
 
-    # for all passages search for similar passages
-    match_indices, match_scores = searcher.search(
-        dataset["text"], k=k, return_tensors="np", progress_bar=True
-    )
+class TripleSampleBuilder:
+    def __init__(self, passage_labels: list[int], sampling_mode: SamplingMode = "uniform") -> None:
+        self.sampling_mode = sampling_mode
 
-    triples = []
-    # iterate over all passages, together with their retrieved similar pids, scores and label
-    for pid, (indices, scores, label) in enumerate(
-        tqdm(zip(match_indices, match_scores, passage_labels), total=len(passage_labels))
-    ):
-        # compute a mask of which matched passages have also the same label
-        label_pid_mask = np.isin(indices, label_pids[label])
-        # matched pids that have the same label
-        positive_pids = indices[label_pid_mask]
-        # matched pids that have different label
-        negative_pids = indices[~label_pid_mask]
+        # holds corresponding label for all passages in dataset
+        self.passage_labels = np.array(passage_labels)
+        self.unique_labels = np.unique(self.passage_labels)
+        # for each class holds pids that have that class assigned as label
+        self.label_pids = {l: np.where(self.passage_labels == l)[0] for l in self.unique_labels}
 
-        if len(positive_pids) == 0:
-            logger.warning(
-                "No passage with the same label was matched in the retrieval process. Using a random sampled one instead."
-            )
-            positive_pids = np.random.choice(label_pids[label], size=1)
+    def create_samples(
+        self,
+        passages: list[str],
+        labels: list[int],
+        rank: int,
+        searcher: BaseSearcher,
+        k: int,
+        nway: int = 2,
+    ) -> dict[str, tuple[int, ...]]:
+        labels = np.array(labels)
 
-        match sampling_mode:
-            case SamplingMode.scores:
-                # use similarity scores as probabilities
-                positive_probs = scores[label_pid_mask] if len(positive_pids) > 1 else None
-                negative_probs = scores[~label_pid_mask] if len(negative_pids) > 1 else None
-            case SamplingMode.ranks:
-                # use ranking as probabilities
-                positive_probs = (
-                    np.arange(len(positive_pids), 0, -1) if len(positive_pids) > 1 else None
+        # for all passages search for similar passages
+        match_indices, match_scores = searcher.search(
+            passages, k=k, return_tensors="np", gpu=rank, progress_bar=True
+        )
+
+        triples = []
+        # iterate over all passages, together with their retrieved similar pids, scores and label
+        for pid, (indices, scores, label) in enumerate(
+            tqdm(zip(match_indices, match_scores, labels), total=len(passages), desc="Sampling triples")
+        ):
+            # compute a mask of which matched passages have also the same label
+            label_pid_mask = np.isin(indices, self.label_pids[label], assume_unique=True)
+            # matched pids that have the same label
+            positive_pids = indices[label_pid_mask]
+            positive_scores = scores[label_pid_mask]
+            # matched pids that have different label
+            negative_pids = indices[~label_pid_mask]
+            negative_scores = scores[~label_pid_mask]
+
+            if len(positive_pids) == 0:
+                logger.warning(
+                    f"No passage with the same label ({label=}) was matched in the retrieval process. "
+                    f"Using a random sample of {k=} instead."
                 )
-                negative_probs = (
-                    np.arange(len(negative_pids), 0, -1) if len(negative_pids) > 1 else None
+                positive_pids = np.random.choice(self.label_pids[label], size=k)
+                positive_scores = None
+
+            if len(negative_pids) < nway - 1:
+                logger.warning(
+                    f"Not enough passages with different label ({label=}) was matched in the retrieval process "
+                    f"(found only {len(negative_pids)}, but need at least {nway - 1}). "
+                    f"Using a random sample to fill up to {k=}."
                 )
-            case SamplingMode.uniform:
-                positive_probs = None
-                negative_probs = None
+                # fill pids with other pids that have different labels
+                pids_with_different_label = np.concatenate([self.label_pids[l] for l in self.unique_labels])
+                non_retrieved_negatives = pids_with_different_label[~np.isin(pids_with_different_label, negative_pids, assume_unique=True)]
+                negative_fill_pids = np.random.choice(non_retrieved_negatives, size=k - len(negative_pids))
+                negative_pids = np.concatenate([negative_pids, negative_fill_pids])
+                # fill scores with zeros
+                fill_scores = np.zeros(len(negative_fill_pids))
+                negative_scores = np.concatenate([negative_scores, fill_scores])
 
-        # normalize probs
-        if positive_probs is not None:
-            positive_probs = normalize_probs(positive_probs)
-        if negative_probs is not None:
-            negative_probs = normalize_probs(negative_probs)
+            match self.sampling_mode:
+                case "scores":
+                    # use similarity scores as probabilities
+                    positive_probs = positive_scores
+                    negative_probs = negative_scores
+                case "ranks":
+                    # use ranking as probabilities
+                    positive_probs = (
+                        np.arange(len(positive_pids), 0, -1) if len(positive_pids) > 1 else None
+                    )
+                    negative_probs = (
+                        np.arange(len(negative_pids), 0, -1) if len(negative_pids) > 1 else None
+                    )
+                case "uniform":
+                    positive_probs = None
+                    negative_probs = None
 
-        positive_sample = np.random.choice(positive_pids, size=1, p=positive_probs)
-        negative_samples = np.random.choice(negative_pids, size=nway - 1, p=negative_probs)
+            # normalize probs
+            if positive_probs is not None:
+                positive_probs = normalize_probs(positive_probs)
+            if negative_probs is not None:
+                negative_probs = normalize_probs(negative_probs)
 
-        triples.append((pid, *positive_sample.tolist(), *negative_samples.tolist()))
+            positive_sample = np.random.choice(positive_pids, size=1, p=positive_probs)
+            negative_samples = np.random.choice(negative_pids, size=nway - 1, p=negative_probs)
 
-    return dataset.add_column("triple", triples)
+            triples.append((pid, *positive_sample.tolist(), *negative_samples.tolist()))
+
+        return {"triple": triples}
 
 
 def normalize_probs(probs: np.ndarray) -> np.ndarray:
