@@ -1,11 +1,8 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 from torch import Tensor
-
-from ettcl.encoding.base_encoder import BaseEncoder
-from enum import Enum
 
 TextQueries = str | list[str] | dict[int | str, str]
 T = list | np.ndarray | Tensor
@@ -22,18 +19,9 @@ class TensorType(str, Enum):
     NUMPY = "np"
 
 
-@dataclass
-class SearcherConfig:
-    ncells: int | None = None
-
-
-class BaseSearcher(ABC):
-    def __init__(
-        self, index_path: str, encoder: BaseEncoder, args: SearcherConfig = SearcherConfig()
-    ) -> None:
-        self.index_path = index_path
-        self.encoder = encoder
-        self.args = args
+class Searcher(ABC):
+    """`Interface` that provides methods to search for most
+    similar passage ids given query texts"""
 
     @abstractmethod
     def search(
@@ -42,6 +30,6 @@ class BaseSearcher(ABC):
         k: int,
         return_tensors: bool | str | TensorType = "pt",
         gpu: bool | int = True,
-        progress_bar: bool = False,
+        progress_bar: bool = True,
     ) -> SearchResult:
         pass

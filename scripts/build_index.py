@@ -1,14 +1,13 @@
-if __name__ == "__main__":
-    from pathlib import Path
+from pathlib import Path
 
-    import datasets
+import datasets
 
-    from ettcl.encoding import ColBERTEncoder
-    from ettcl.indexing import ColBERTIndexer, IndexerConfig
-    from ettcl.modeling import ColBERTModel, ColBERTTokenizer
+from ettcl.encoding import ColBERTEncoder
+from ettcl.indexing import ColBERTIndexer, IndexerConfig
+from ettcl.modeling import ColBERTModel, ColBERTTokenizer
 
-    retrain_index = True
 
+def main():
     dataset = "trec"
     index_dir = "indexes"
     model_path = "bert-base-uncased"
@@ -22,4 +21,8 @@ if __name__ == "__main__":
     indexer_config = IndexerConfig(nbits=2)
     index_path = Path(index_dir) / f"{Path(model_path).name}.{indexer_config.nbits}bits"
     indexer = ColBERTIndexer(encoder, indexer_config)
-    indexer.index(index_path, train_dataset["text"], gpus=[1])
+    indexer.index(index_path, train_dataset["text"], gpus=True)
+
+
+if __name__ == "__main__":
+    main()

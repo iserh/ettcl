@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from ettcl.encoding.base_encoder import BaseEncoder
+from ettcl.encoding.encoder import Encoder
 from ettcl.utils.utils import Devices
 
 
@@ -12,7 +12,7 @@ class IndexerConfig:
 
 
 class BaseIndexer(ABC):
-    def __init__(self, encoder: BaseEncoder, config: IndexerConfig = IndexerConfig()) -> None:
+    def __init__(self, encoder: Encoder, config: IndexerConfig = IndexerConfig()) -> None:
         self.encoder = encoder
         self.config = config
 

@@ -73,6 +73,30 @@ class ColBERTTokenizer:
                 for s in text
             ]
 
+    def pad(
+        self,
+        encoded_inputs,
+        mode: TokenizerMode = "doc",
+        padding: bool | str | PaddingStrategy = True,
+        max_length: int | None = None,
+        pad_to_multiple_of: int | None = None,
+        return_attention_mask: bool | None = None,
+        return_tensors: str | TensorType | None = None,
+        verbose: bool = True,
+    ) -> BatchEncoding:
+        if max_length is None:
+            max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
+
+        return self.tokenizer.pad(
+            encoded_inputs=encoded_inputs,
+            padding=padding,
+            max_length=max_length,
+            pad_to_multiple_of=pad_to_multiple_of,
+            return_attention_mask=return_attention_mask,
+            return_tensors=return_tensors,
+            verbose=verbose,
+        )
+
     def __call__(
         self,
         text: str | list[str],
@@ -91,12 +115,16 @@ class ColBERTTokenizer:
         if special_token is not None:
             text = [special_token + s for s in text]
 
+        max_length = kwargs.pop("max_length", None)
+        if max_length is None:
+            max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
+
         encoding = self.tokenizer(
             text,
             add_special_tokens=add_special_tokens,
             padding=padding,
             truncation=truncation,
-            max_length=self.query_maxlen,
+            max_length=max_length,
             return_tensors=return_tensors,
             **kwargs,
         )

@@ -78,13 +78,19 @@ class ColBERTModel(PreTrainedModel):
         else:
             base_config = AutoConfig.for_model(**config.to_dict())
 
-        base_model_cls: type[PreTrainedModel] = _get_model_class(base_config, AutoModel._model_mapping)
+        base_model_cls: type[PreTrainedModel] = _get_model_class(
+            base_config, AutoModel._model_mapping
+        )
 
         if base_model_cls._keys_to_ignore_on_load_missing is not None:
-            cls._keys_to_ignore_on_load_missing.update(base_model_cls._keys_to_ignore_on_load_missing)
+            cls._keys_to_ignore_on_load_missing.update(
+                base_model_cls._keys_to_ignore_on_load_missing
+            )
 
         if base_model_cls._keys_to_ignore_on_load_unexpected is not None:
-            cls._keys_to_ignore_on_load_unexpected.update(base_model_cls._keys_to_ignore_on_load_unexpected)
+            cls._keys_to_ignore_on_load_unexpected.update(
+                base_model_cls._keys_to_ignore_on_load_unexpected
+            )
 
         if base_model_cls._keys_to_ignore_on_save is not None:
             cls._keys_to_ignore_on_save.update(base_model_cls._keys_to_ignore_on_save)

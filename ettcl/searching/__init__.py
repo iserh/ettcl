@@ -1,2 +1,2 @@
-from .base_searcher import BaseSearcher, SearcherConfig
-from .colbert_searcher import ColBERTSearcher
+from .colbert_searcher import ColBERTSearcher, ColBERTSearcherConfig
+from .searcher import Searcher

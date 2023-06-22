@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from enum import Enum
 from logging import getLogger
@@ -5,13 +6,13 @@ from typing import Any
 
 import numpy as np
 import torch
-import os
 from datasets import Dataset
 from sklearn.preprocessing import MinMaxScaler
-from tqdm import tqdm
+from ettcl.logging.tqdm import tqdm
 from transformers import DataCollatorWithPadding
+from ettcl.utils.multiprocessing import run_multiprocessed
 
-from ettcl.searching import BaseSearcher
+from ettcl.searching import Searcher
 
 logger = getLogger(__name__)
 
@@ -82,7 +83,6 @@ def create_triples_random(
     return dataset.add_column("triple", triples)
 
 
-
 class TripleSampleBuilder:
     def __init__(self, passage_labels: list[int], sampling_mode: SamplingMode = "uniform") -> None:
         self.sampling_mode = sampling_mode
@@ -95,14 +95,27 @@ class TripleSampleBuilder:
 
     def create_samples(
         self,
-        passages: list[str],
+        dataset: Dataset,
         labels: list[int],
         rank: int,
-        searcher: BaseSearcher,
+        searcher: Searcher,
         k: int,
         nway: int = 2,
+        text_column: str = "text",
+        label_column: str = "label",
     ) -> dict[str, tuple[int, ...]]:
         labels = np.array(labels)
+
+        dataset = dataset.map(
+            run_multiprocessed(searcher.search),
+            num_proc=2,
+            with_rank=True,
+            input_columns="text",
+            fn_kwargs={"k": 10},
+            batched=True,
+            batch_size=5000,
+            # load_from_cache_file=False,
+        )
 
         # for all passages search for similar passages
         match_indices, match_scores = searcher.search(
@@ -112,7 +125,11 @@ class TripleSampleBuilder:
         triples = []
         # iterate over all passages, together with their retrieved similar pids, scores and label
         for pid, (indices, scores, label) in enumerate(
-            tqdm(zip(match_indices, match_scores, labels), total=len(passages), desc="Sampling triples")
+            tqdm(
+                zip(match_indices, match_scores, labels),
+                total=len(passages),
+                desc="Sampling triples",
+            )
         ):
             # compute a mask of which matched passages have also the same label
             label_pid_mask = np.isin(indices, self.label_pids[label], assume_unique=True)
@@ -138,9 +155,15 @@ class TripleSampleBuilder:
                     f"Using a random sample to fill up to {k=}."
                 )
                 # fill pids with other pids that have different labels
-                pids_with_different_label = np.concatenate([self.label_pids[l] for l in self.unique_labels])
-                non_retrieved_negatives = pids_with_different_label[~np.isin(pids_with_different_label, negative_pids, assume_unique=True)]
-                negative_fill_pids = np.random.choice(non_retrieved_negatives, size=k - len(negative_pids))
+                pids_with_different_label = np.concatenate(
+                    [self.label_pids[l] for l in self.unique_labels]
+                )
+                non_retrieved_negatives = pids_with_different_label[
+                    ~np.isin(pids_with_different_label, negative_pids, assume_unique=True)
+                ]
+                negative_fill_pids = np.random.choice(
+                    non_retrieved_negatives, size=k - len(negative_pids)
+                )
                 negative_pids = np.concatenate([negative_pids, negative_fill_pids])
                 # fill scores with zeros
                 fill_scores = np.zeros(len(negative_fill_pids))

@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # from multiprocess import set_start_method
+import hashlib
 from pathlib import Path
 
+import torch
 from datasets import Dataset
 from transformers import Trainer, TrainingArguments
 
-from ettcl.core.triple_sampling import DataCollatorForTriples, TripleSampler, TripleSampleBuilder
+from ettcl.core.triple_sampling import DataCollatorForTriples, TripleSampleBuilder, TripleSampler
 from ettcl.encoding import ColBERTEncoder
 from ettcl.indexing import ColBERTIndexer
-from ettcl.modeling import ColBERTForReranking, ColBERTConfig, ColBERTModel, ColBERTTokenizer
-from ettcl.searching import ColBERTSearcher, SearcherConfig
-import hashlib
-import torch
+from ettcl.modeling import ColBERTConfig, ColBERTForReranking, ColBERTModel, ColBERTTokenizer
+from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
 
 # try:
 #     set_start_method("spawn")
@@ -38,7 +38,7 @@ def train(
     encoder = ColBERTEncoder(model, tokenizer)
     indexer = ColBERTIndexer(encoder)
     sample_builder = TripleSampleBuilder(train_dataset["label"], sampling_mode="scores")
-    searching_args = SearcherConfig(ncells=32)
+    searching_args = ColBERTSearcherConfig(ncells=32)
 
     print("Build index")
     global_step = 0
@@ -61,7 +61,7 @@ def train(
             batched=True,
             batch_size=12_500,
             num_proc=torch.cuda.device_count(),
-            new_fingerprint=hashlib.md5(str(index_path).encode("utf-8")).hexdigest()
+            new_fingerprint=hashlib.md5(str("abcde").encode("utf-8")).hexdigest(),
         )
 
         print("Tokenize")
@@ -70,7 +70,11 @@ def train(
         )
 
         print("Create Trainer")
-        sampler = TripleSampler(train_dataset.select_columns(["input_ids", "token_type_ids", "attention_mask", "triple"]))
+        sampler = TripleSampler(
+            train_dataset.select_columns(
+                ["input_ids", "token_type_ids", "attention_mask", "triple"]
+            )
+        )
         training_args.num_train_epochs = epoch + 1
         trainer = Trainer(
             model=model,
@@ -78,7 +82,6 @@ def train(
             train_dataset=sampler,
             data_collator=data_collator,
         )
-
 
         print("Train")
         # For training cast model to Reanking

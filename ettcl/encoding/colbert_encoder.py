@@ -1,63 +1,79 @@
 import torch
 from datasets import Dataset
-from tqdm import tqdm
+from transformers import DataCollatorWithPadding
 
-from ettcl.encoding.base_encoder import BaseEncoder
+from ettcl.encoding.encoder import Encoder
+from ettcl.logging.tqdm import tqdm
 from ettcl.modeling.modeling_colbert import ColBERTModel
 from ettcl.modeling.tokenization_colbert import ColBERTTokenizer
+from ettcl.logging.tqdm import tqdm
 
 
-class ColBERTEncoder(BaseEncoder):
+def sort_by_length(dataset: Dataset, lengths: list[int]) -> tuple[Dataset, torch.LongTensor]:
+    lengths = torch.LongTensor(lengths)
+
+    indices = lengths.sort().indices
+    reverse_indices = indices.sort().indices
+
+    return dataset.select(indices), reverse_indices
+
+
+class ColBERTEncoder(Encoder):
     def __init__(self, model: ColBERTModel, tokenizer: ColBERTTokenizer) -> None:
         super().__init__()
         self.model = model
         self.tokenizer = tokenizer
         self.use_gpu = False
 
+        self.doc_collator = DataCollatorWithPadding(
+            tokenizer, padding="longest", max_length=tokenizer.doc_maxlen
+        )
+        self.query_collator = DataCollatorWithPadding(
+            tokenizer, padding="longest", max_length=tokenizer.query_maxlen
+        )
+
     @property
     def embedding_dim(self) -> int:
         return self.model.output_dimensionality
 
-    def cuda(self) -> BaseEncoder:
-        self.model.cuda()
+    def cuda(self, device: int | None = None) -> Encoder:
+        self.model.cuda(device)
         self.use_gpu = True
         return self
 
-    def cpu(self) -> BaseEncoder:
+    def cpu(self) -> Encoder:
         self.model.cpu()
         self.use_gpu = False
         return self
 
     def encode_passages(
-        self, passages: list[str], batch_size: int = 256, to_cpu: bool = True
+        self,
+        passages: list[str],
+        batch_size: int = 256,
+        to_cpu: bool = True,
+        progress_bar: bool = True,
     ) -> tuple[torch.FloatTensor, list[int]]:
         assert len(passages) > 0, "No passages provided"
 
-        # TODO: Could sort by doc length to speed up encoding
-        input_data = Dataset.from_dict({"text": passages})
-        input_data.set_format("pt")
-        input_data = input_data.map(
-            lambda batch: self.tokenizer(
-                batch["text"],
-                mode="doc",
-                add_special_tokens=True,
-                padding="longest",
-                truncation="longest_first",
-                return_tensors="pt",
-            ),
-            batched=True,
-            batch_size=1024
-            - (
-                1024 % batch_size
-            ),  # floor to whole of batch_size (important because of padding='longest')
+        encodings = self.tokenizer(
+            passages,
+            mode="doc",
+            add_special_tokens=True,
+            truncation="longest_first",
+            return_length=True,
         )
-        input_data = input_data.remove_columns("text")
+
+        lengths = encodings.pop("length")
+        dataset = Dataset.from_dict(encodings)
+        dataset, reverse_indices = sort_by_length(dataset, lengths)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, collate_fn=self.doc_collator
+        )
 
         with torch.inference_mode():
+
             all_embs, all_doclens = [], []
-            for input_dict in tqdm(
-                input_data.iter(batch_size), total=len(input_data) // batch_size, desc="Encoding"
-            ):
+            for input_dict in tqdm(dataloader, desc="Encoding", disable=not progress_bar):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
 
@@ -83,34 +99,33 @@ class ColBERTEncoder(BaseEncoder):
         return all_embs, all_doclens
 
     def encode_queries(
-        self, queries: list[str], batch_size: int = 256, to_cpu: bool = False
+        self,
+        queries: list[str],
+        batch_size: int = 32,
+        to_cpu: bool = False,
+        progress_bar: bool = True,
     ) -> torch.FloatTensor:
         assert len(queries) > 0, "No queries provided"
 
-        input_data = Dataset.from_dict({"text": queries})
-        input_data.set_format("pt")
-        input_data = input_data.map(
-            lambda batch: self.tokenizer(
-                batch["text"],
-                mode="query",
-                add_special_tokens=True,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
-            ),
-            batched=True,
-            batch_size=1024
-            - (
-                1024 % batch_size
-            ),  # floor to whole of batch_size (important because of padding='longest')
+        encodings = self.tokenizer(
+            queries,
+            mode="query",
+            add_special_tokens=True,
+            truncation="longest_first",
+            return_length=True,
         )
-        input_data = input_data.remove_columns("text")
+
+        lengths = encodings.pop("length")
+        dataset = Dataset.from_dict(encodings)
+        dataset, reverse_indices = sort_by_length(dataset, lengths)
+        dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, collate_fn=self.query_collator
+        )
 
         with torch.inference_mode():
             all_embs = []
-            for input_dict in tqdm(
-                input_data.iter(batch_size), total=len(input_data) // batch_size, desc="Encoding"
-            ):
+
+            for input_dict in tqdm(dataloader, desc="Encoding", disable=not progress_bar):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
 
@@ -119,8 +134,8 @@ class ColBERTEncoder(BaseEncoder):
                 if to_cpu:
                     Q = Q.cpu()
 
-                all_embs.append(Q)
+                all_embs.extend(Q)
 
-            all_embs = torch.cat(all_embs)
+            all_embs = torch.nn.utils.rnn.pad_sequence(all_embs, batch_first=True)
 
-        return all_embs
+        return all_embs[reverse_indices]

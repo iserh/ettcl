@@ -2,13 +2,13 @@ from colbert.data.collection import Collection
 from colbert.indexing.collection_indexer import CollectionIndexer
 from colbert.indexing.index_saver import IndexSaver
 
-from ettcl.encoding.base_encoder import BaseEncoder
+from ettcl.encoding.encoder import Encoder
 from ettcl.indexing.colbert.settings import _IndexerSettings
 
 
 def index(
     config: _IndexerSettings,
-    encoder: BaseEncoder,
+    encoder: Encoder,
     collection: list[str],
     shared_lists: list[list],
 ) -> None:
@@ -21,7 +21,7 @@ class CollectionIndexerWrapper(CollectionIndexer):
     def __init__(
         self,
         config: _IndexerSettings,
-        encoder: BaseEncoder,
+        encoder: Encoder,
         collection: list[str],
     ) -> None:
         self.config = config

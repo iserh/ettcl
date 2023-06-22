@@ -2,15 +2,15 @@ import multiprocessing as mp
 import os
 from pathlib import Path
 
+import torch
 from colbert.infra.config.config import RunConfig
 from colbert.infra.launcher import Launcher
 from colbert.infra.run import Run
-import torch
 
 from ettcl.indexing.base_indexer import BaseIndexer
 from ettcl.indexing.colbert.collection_indexer import index
-from ettcl.utils.utils import Devices, to_gpu_list
 from ettcl.indexing.colbert.settings import _IndexerSettings
+from ettcl.utils.utils import Devices, to_gpu_list
 
 
 class ColBERTIndexer(BaseIndexer):
@@ -18,7 +18,7 @@ class ColBERTIndexer(BaseIndexer):
         self,
         index_path: str,
         collection: list[str],
-        gpus: Devices = 0,
+        gpus: Devices = True,
         n_processes: int = -1,
         resume: bool = False,
     ) -> None:
@@ -45,7 +45,7 @@ class ColBERTIndexer(BaseIndexer):
                 index_path=str(index_path),
                 nbits=self.config.nbits,
                 dim=self.encoder.embedding_dim,
-                bsize=64,
+                bsize=512,
                 partitions=None,
             )
 

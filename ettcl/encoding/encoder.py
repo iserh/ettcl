@@ -3,18 +3,20 @@ from abc import ABC, abstractmethod
 import torch
 
 
-class BaseEncoder(ABC):
+class Encoder(ABC):
+    """`Interface` that provides methods to encode text to embedding vectors."""
+
     @property
     @abstractmethod
     def embedding_dim(self) -> int:
         pass
 
     @abstractmethod
-    def cuda(self) -> "BaseEncoder":
+    def cuda(self, device: int | None = None) -> "Encoder":
         pass
 
     @abstractmethod
-    def cpu(self) -> "BaseEncoder":
+    def cpu(self) -> "Encoder":
         pass
 
     @abstractmethod
