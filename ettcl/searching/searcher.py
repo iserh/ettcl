@@ -1,12 +1,41 @@
 from abc import ABC, abstractmethod
+from collections import UserDict
 from enum import Enum
 
 import numpy as np
-from torch import Tensor
+import torch
 
 TextQueries = str | list[str] | dict[int | str, str]
-T = list | np.ndarray | Tensor
-SearchResult = tuple[T, T] | tuple[list[T], list[T]]
+TensorLike = torch.Tensor | np.ndarray | list
+
+
+class BatchResult(UserDict):
+    def __init__(
+        self,
+        match_pids: TensorLike,
+        match_scores: TensorLike,
+    ):
+        super().__init__(
+            {
+                "match_pids": match_pids,
+                "match_scores": match_scores,
+            }
+        )
+
+    def __getattr__(self, item: str) -> TensorLike:
+        try:
+            return self.data[item]
+        except KeyError:
+            raise AttributeError
+
+    def keys(self):
+        return self.data.keys()
+
+    def values(self):
+        return self.data.values()
+
+    def items(self):
+        return self.data.items()
 
 
 class TensorType(str, Enum):
@@ -31,5 +60,5 @@ class Searcher(ABC):
         return_tensors: bool | str | TensorType = "pt",
         gpu: bool | int = True,
         progress_bar: bool = True,
-    ) -> SearchResult:
+    ) -> BatchResult:
         pass

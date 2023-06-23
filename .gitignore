@@ -137,3 +137,4 @@ dmypy.json
 /experiments/
 /output/
 /training/
+/configs/

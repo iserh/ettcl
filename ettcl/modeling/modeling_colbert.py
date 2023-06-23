@@ -69,28 +69,20 @@ class ColBERTModel(PreTrainedModel):
         self.post_init()
 
     @classmethod
-    def from_pretrained(
-        cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs
-    ):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
         config = kwargs.pop("config", None)
         if config is None:
             base_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
         else:
             base_config = AutoConfig.for_model(**config.to_dict())
 
-        base_model_cls: type[PreTrainedModel] = _get_model_class(
-            base_config, AutoModel._model_mapping
-        )
+        base_model_cls: type[PreTrainedModel] = _get_model_class(base_config, AutoModel._model_mapping)
 
         if base_model_cls._keys_to_ignore_on_load_missing is not None:
-            cls._keys_to_ignore_on_load_missing.update(
-                base_model_cls._keys_to_ignore_on_load_missing
-            )
+            cls._keys_to_ignore_on_load_missing.update(base_model_cls._keys_to_ignore_on_load_missing)
 
         if base_model_cls._keys_to_ignore_on_load_unexpected is not None:
-            cls._keys_to_ignore_on_load_unexpected.update(
-                base_model_cls._keys_to_ignore_on_load_unexpected
-            )
+            cls._keys_to_ignore_on_load_unexpected.update(base_model_cls._keys_to_ignore_on_load_unexpected)
 
         if base_model_cls._keys_to_ignore_on_save is not None:
             cls._keys_to_ignore_on_save.update(base_model_cls._keys_to_ignore_on_save)
@@ -134,9 +126,7 @@ class ColBERTModel(PreTrainedModel):
         )
 
         sequence_output = encoder_outputs[0]
-        compressed_output = (
-            self.linear(sequence_output) if self.linear is not None else sequence_output
-        )
+        compressed_output = self.linear(sequence_output) if self.linear is not None else sequence_output
         compressed_output = compressed_output * attention_mask.unsqueeze(-1)
         normalized_output = F.normalize(compressed_output, p=2, dim=2)
 
@@ -156,9 +146,7 @@ class ColBERTForReranking(ColBERTModel):
     _keys_to_ignore_on_load_missing = set(["default_labels"])
     _keys_to_ignore_on_save = set(["default_labels"])
 
-    def __init__(
-        self, config: ColBERTConfig, base_model_class: type[PreTrainedModel] = None
-    ) -> None:
+    def __init__(self, config: ColBERTConfig, base_model_class: type[PreTrainedModel] = None) -> None:
         super().__init__(config, base_model_class)
         self.register_buffer("default_labels", torch.zeros(1, dtype=torch.int64))
 
@@ -180,12 +168,8 @@ class ColBERTForReranking(ColBERTModel):
 
         outputs = super().forward(
             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,
-            attention_mask=attention_mask.view(-1, input_length)
-            if attention_mask is not None
-            else None,
-            token_type_ids=token_type_ids.view(-1, input_length)
-            if token_type_ids is not None
-            else None,
+            attention_mask=attention_mask.view(-1, input_length) if attention_mask is not None else None,
+            token_type_ids=token_type_ids.view(-1, input_length) if token_type_ids is not None else None,
             return_dict=return_dict,
         )
 

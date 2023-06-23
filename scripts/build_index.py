@@ -1,28 +1,40 @@
-from pathlib import Path
+#!/usr/bin/env python
+import os
 
 import datasets
 
 from ettcl.encoding import ColBERTEncoder
-from ettcl.indexing import ColBERTIndexer, IndexerConfig
-from ettcl.modeling import ColBERTModel, ColBERTTokenizer
+from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
+from ettcl.modeling import ColBERTConfig, ColBERTModel, ColBERTTokenizer
+from ettcl.utils.utils import catchtime
 
 
 def main():
-    dataset = "trec"
-    index_dir = "indexes"
-    model_path = "bert-base-uncased"
+    dataset_name = "imdb"
+    pretrained_model_name_or_path = "bert-base-uncased"
+    save_model = True
+    nbits = 2
+    index_name = f"{pretrained_model_name_or_path}.{nbits}bits"
 
-    model = ColBERTModel.from_pretrained(model_path)
-    tokenizer = ColBERTTokenizer(model_path)
+    dataset = datasets.load_dataset(dataset_name, split="train")
+
+    model_config = ColBERTConfig.from_pretrained(pretrained_model_name_or_path, compression_dim=128)
+    model = ColBERTModel.from_pretrained(pretrained_model_name_or_path, config=model_config)
+    tokenizer = ColBERTTokenizer.from_pretrained(pretrained_model_name_or_path, query_maxlen=256, doc_maxlen=256)
     encoder = ColBERTEncoder(model, tokenizer)
 
-    train_dataset = datasets.load_dataset(dataset, split="train")
-
-    indexer_config = IndexerConfig(nbits=2)
-    index_path = Path(index_dir) / f"{Path(model_path).name}.{indexer_config.nbits}bits"
+    indexer_config = ColBERTIndexerConfig(nbits=nbits)
     indexer = ColBERTIndexer(encoder, indexer_config)
-    indexer.index(index_path, train_dataset["text"], gpus=True)
+    index_path = os.path.join("indexes", dataset_name, index_name)
+
+    with catchtime(desc="Indexing"):
+        indexer.index(index_path, dataset["text"], gpus=True)
+
+    if save_model:
+        model.save_pretrained(index_path)
+        tokenizer.save_pretrained(index_path)
 
 
 if __name__ == "__main__":
-    main()
+    with catchtime(desc="Main"):
+        main()

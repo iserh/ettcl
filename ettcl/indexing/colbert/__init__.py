@@ -1,1 +1,1 @@
-from .indexer import ColBERTIndexer
+from .indexer import ColBERTIndexer, ColBERTIndexerConfig

@@ -1,100 +1,158 @@
 #!/usr/bin/env python
-# from multiprocess import set_start_method
-import hashlib
+import os
 from pathlib import Path
 
 import torch
-from datasets import Dataset
 from transformers import Trainer, TrainingArguments
 
-from ettcl.core.triple_sampling import DataCollatorForTriples, TripleSampleBuilder, TripleSampler
+from ettcl.core.triple_sampling import (
+    DataCollatorForTriples,
+    TripleSamplerDataset,
+    TripleSamplingData,
+)
 from ettcl.encoding import ColBERTEncoder
-from ettcl.indexing import ColBERTIndexer
+from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.modeling import ColBERTConfig, ColBERTForReranking, ColBERTModel, ColBERTTokenizer
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
-
-# try:
-#     set_start_method("spawn")
-# except:
-#     pass
+from ettcl.utils.multiprocessing import run_multiprocessed
 
 
-def train(
-    train_dataset: Dataset,
-    model_name_or_path: str,
-    output_dir: str,
+def setup_configs_for_colbert(
+    pretrained_model_name_or_path: str | os.PathLike,
+    model_kwargs: dict[str],
+    training_kwargs: dict[str],
+    indexing_kwargs: dict[str],
+    searching_kwargs: dict[str],
+) -> dict[str]:
+    model_config = ColBERTConfig.from_pretrained(pretrained_model_name_or_path, **model_kwargs)
+    training_args = TrainingArguments(**training_kwargs)
+    indexer_config = ColBERTIndexerConfig(**indexing_kwargs)
+
+    if searching_kwargs is not None:
+        searcher_config = ColBERTSearcherConfig(**searching_kwargs)
+    else:
+        searcher_config = None
+
+    return {
+        "model_config": model_config,
+        "training_args": training_args,
+        "indexer_config": indexer_config,
+        "searcher_config": searcher_config,
+    }
+
+
+def train_colbert(
+    dataset_name_or_path: str | os.PathLike,
+    pretrained_model_name_or_path: str | os.PathLike,
     model_config: ColBERTConfig,
     training_args: TrainingArguments,
-    test_dataset: Dataset | None = None,
+    indexer_config: ColBERTIndexerConfig,
+    tokenizer_kwargs: dict[str],
+    sampling_kwargs: dict[str],
+    rebuild_index_interval: int = 1,
+    do_eval: bool = False,
+    searcher_config: ColBERTSearcherConfig | None = None,
+    searcher_k: int | None = None,
+    subsample_train: int | bool = False,
+    subsample_test: int | bool = False,
 ) -> None:
+    model = ColBERTForReranking.from_pretrained(pretrained_model_name_or_path, config=model_config)
+    tokenizer = ColBERTTokenizer.from_pretrained(pretrained_model_name_or_path, **tokenizer_kwargs)
+    encoder = ColBERTEncoder(model, tokenizer)
+    indexer = ColBERTIndexer(encoder, indexer_config)
+
     output_dir = Path(training_args.output_dir)
     num_train_epochs = training_args.num_train_epochs
+    do_searched_sampling = sampling_kwargs.get("sampling_method", "random") == "searched"
+    assert (
+        do_searched_sampling == searcher_config is not None == searcher_k is not None
+    ), "Searcher Config required when performing `searched` sampling."
 
-    model = ColBERTForReranking.from_pretrained(model_name_or_path, config=model_config)
-    tokenizer = ColBERTTokenizer(model_name_or_path)
+    train_dataset = load_dataset(dataset_name_or_path, split="train")
+    if do_eval:
+        test_dataset = load_dataset(dataset_name_or_path, split="test")
+    else:
+        raise NotImplementedError()
 
-    data_collator = DataCollatorForTriples(tokenizer.tokenizer)
+    if subsample_train is not False:
+        train_dataset_ = train_dataset
+        train_dataset = train_dataset_.shuffle().take(subsample_train)
 
-    encoder = ColBERTEncoder(model, tokenizer)
-    indexer = ColBERTIndexer(encoder)
-    sample_builder = TripleSampleBuilder(train_dataset["label"], sampling_mode="scores")
-    searching_args = ColBERTSearcherConfig(ncells=32)
-
-    print("Build index")
-    global_step = 0
+    print("Build initial index")
+    model.__class__ = ColBERTModel  # cast to ColBERTModel
     index_path = output_dir / f"checkpoint-{global_step}" / "index"
-    # for indexing/searching cast model to basic ColBERTModel
-    model.__class__ = ColBERTModel
-    # indexer.index(index_path, train_dataset["text"], gpus=True)
-    searcher = ColBERTSearcher(index_path, encoder, searching_args)
+    indexer.index(index_path, train_dataset["text"], gpus=True)
 
-    for epoch in range(num_train_epochs):
+    sampling_data_builder = TripleSamplingData(train_dataset["label"], **sampling_kwargs)
+    data_collator_for_triples = DataCollatorForTriples(tokenizer)
+    if do_searched_sampling:
+        sampling_input_columns = ["match_pids", "match_scores", "label"]
+        searcher = ColBERTSearcher(index_path, encoder, searcher_config)
+    else:
+        sampling_input_columns = ["label"]
+
+    epoch, global_step = 0, 0
+    while epoch < num_train_epochs:
         print(f"\n\n## EPOCH {epoch}\n")
 
-        print("Create triples dataset")
-        searcher.index_path = index_path
-        train_dataset = train_dataset.map(
-            sample_builder.create_samples,
-            input_columns=["text", "label"],
-            fn_kwargs={"searcher": searcher, "k": 1024, "nway": 32},
-            with_rank=True,
-            batched=True,
-            batch_size=12_500,
-            num_proc=torch.cuda.device_count(),
-            new_fingerprint=hashlib.md5(str("abcde").encode("utf-8")).hexdigest(),
+        sampling_dataset = train_dataset
+        if do_searched_sampling:
+            print("Search dataset")
+            searcher.index_path = index_path
+            sampling_dataset.set_format(None)  # crucial to avoid leaked semaphore objects in map multiprocessing
+            sampling_dataset = sampling_dataset.map(
+                run_multiprocessed(searcher.search),
+                input_columns="text",
+                fn_kwargs={"k": searcher_k},
+                batched=True,
+                num_proc=torch.cuda.device_count(),
+                with_rank=True,
+                desc="Searching",
+            )
+
+        print("Create Sampling data")
+        sampling_dataset.set_format("numpy")
+        sampling_dataset = sampling_dataset.map(
+            sampling_data_builder,
+            input_columns=sampling_input_columns,
+            with_indices=True,
+            remove_columns=sampling_input_columns,
         )
 
         print("Tokenize")
-        train_dataset = train_dataset.map(
-            lambda batch: tokenizer(batch["text"], truncation=True), batched=True
+        sampling_dataset = sampling_dataset.map(
+            lambda batch: tokenizer(batch, truncation=True),
+            input_columns="text",
+            remove_columns="text",
+            batched=True
         )
 
+        triple_sampler_dataset = TripleSamplerDataset(sampling_dataset, sampling_data_builder.nway)
+
         print("Create Trainer")
-        sampler = TripleSampler(
-            train_dataset.select_columns(
-                ["input_ids", "token_type_ids", "attention_mask", "triple"]
-            )
-        )
-        training_args.num_train_epochs = epoch + 1
+        training_args.num_train_epochs = min(epoch + rebuild_index_interval, num_train_epochs)
         trainer = Trainer(
             model=model,
             args=training_args,
-            train_dataset=sampler,
-            data_collator=data_collator,
+            train_dataset=triple_sampler_dataset,
+            data_collator=data_collator_for_triples,
         )
 
         print("Train")
-        # For training cast model to Reanking
-        model.__class__ = ColBERTForReranking
-        trainer.train(resume_from_checkpoint=(epoch > 0))
+        model.__class__ = ColBERTForReranking  # cast to ColBERTForReranking
+        trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
 
         global_step = trainer.state.global_step
-        tokenizer.tokenizer.save_pretrained(output_dir / f"checkpoint-{global_step}")
+        epoch = trainer.state.epoch
+        tokenizer.save_pretrained(output_dir / f"checkpoint-{global_step}")
 
-        print("Build index")
+        if subsample_train is not False:
+            print("Reshuffle train dataset subsample")
+            train_dataset = train_dataset_.shuffle().take(subsample_train)
+
+        print("Rebuild index")
         index_path = output_dir / f"checkpoint-{global_step}" / "index"
-        # for indexing/searching cast model to basic ColBERTModel
-        model.__class__ = ColBERTModel
+        model.__class__ = ColBERTModel  # cast to ColBERTModel
         indexer.index(index_path, train_dataset["text"], gpus=True)
 
     # print("Save latest model")

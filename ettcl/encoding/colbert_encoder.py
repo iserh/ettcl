@@ -6,7 +6,6 @@ from ettcl.encoding.encoder import Encoder
 from ettcl.logging.tqdm import tqdm
 from ettcl.modeling.modeling_colbert import ColBERTModel
 from ettcl.modeling.tokenization_colbert import ColBERTTokenizer
-from ettcl.logging.tqdm import tqdm
 
 
 def sort_by_length(dataset: Dataset, lengths: list[int]) -> tuple[Dataset, torch.LongTensor]:
@@ -25,12 +24,8 @@ class ColBERTEncoder(Encoder):
         self.tokenizer = tokenizer
         self.use_gpu = False
 
-        self.doc_collator = DataCollatorWithPadding(
-            tokenizer, padding="longest", max_length=tokenizer.doc_maxlen
-        )
-        self.query_collator = DataCollatorWithPadding(
-            tokenizer, padding="longest", max_length=tokenizer.query_maxlen
-        )
+        self.doc_collator = DataCollatorWithPadding(tokenizer, padding="longest", max_length=tokenizer.doc_maxlen)
+        self.query_collator = DataCollatorWithPadding(tokenizer, padding="longest", max_length=tokenizer.query_maxlen)
 
     @property
     def embedding_dim(self) -> int:
@@ -66,43 +61,41 @@ class ColBERTEncoder(Encoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset, reverse_indices = sort_by_length(dataset, lengths)
-        dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, collate_fn=self.doc_collator
-        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.doc_collator)
 
         with torch.inference_mode():
-
-            all_embs, all_doclens = [], []
+            embeddings, masks = [], []
             for input_dict in tqdm(dataloader, desc="Encoding", disable=not progress_bar):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
 
-                mask = input_dict["attention_mask"]
-
                 D = self.model(**input_dict)[0]
+                mask = input_dict["attention_mask"]
 
                 if D.is_cuda:
                     D = D.half()
-
-                D = D.view(-1, D.shape[-1])[mask.bool().flatten()]
-                doclens = mask.sum(-1)
-
                 if to_cpu:
-                    D, doclens = D.cpu(), doclens.cpu()
+                    D, mask = D.cpu(), mask.cpu()
 
-                all_embs.append(D)
-                all_doclens.append(doclens)
+                embeddings.extend(D)
+                masks.extend(mask.bool())
 
-            all_embs = torch.cat(all_embs)
-            all_doclens = torch.cat(all_doclens).tolist()
+            embeddings = torch.nn.utils.rnn.pad_sequence(embeddings, batch_first=True)[reverse_indices]
+            masks = torch.nn.utils.rnn.pad_sequence(masks, batch_first=True)[reverse_indices]
 
-        return all_embs, all_doclens
+            doc_lengths = masks.sum(-1)
+            embeddings_flattened = embeddings.view(-1, embeddings.size(-1))[masks.flatten()]
+
+            assert embeddings_flattened.size(0) == doc_lengths.sum()
+
+        return embeddings_flattened, doc_lengths.tolist()
 
     def encode_queries(
         self,
         queries: list[str],
         batch_size: int = 32,
         to_cpu: bool = False,
+        keepdims: str = "no_pad",
         progress_bar: bool = True,
     ) -> torch.FloatTensor:
         assert len(queries) > 0, "No queries provided"
@@ -118,13 +111,10 @@ class ColBERTEncoder(Encoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset, reverse_indices = sort_by_length(dataset, lengths)
-        dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, collate_fn=self.query_collator
-        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.query_collator)
 
         with torch.inference_mode():
-            all_embs = []
-
+            embeddings = []
             for input_dict in tqdm(dataloader, desc="Encoding", disable=not progress_bar):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
@@ -134,8 +124,9 @@ class ColBERTEncoder(Encoder):
                 if to_cpu:
                     Q = Q.cpu()
 
-                all_embs.extend(Q)
+                embeddings.extend(Q)
 
-            all_embs = torch.nn.utils.rnn.pad_sequence(all_embs, batch_first=True)
-
-        return all_embs[reverse_indices]
+            if keepdims == "no_pad":
+                return [embeddings[r_idx] for r_idx in reverse_indices]
+            else:
+                raise NotImplementedError()

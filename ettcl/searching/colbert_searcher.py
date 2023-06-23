@@ -1,21 +1,22 @@
 from dataclasses import dataclass
-from pathlib import Path
 
-import numpy as np
 import torch
 from colbert.infra.config import BaseConfig, RunConfig, RunSettings, SearchSettings
 from colbert.infra.run import Run
 from colbert.search.index_storage import IndexScorer
 from colbert.utils.utils import zipstar
-from ettcl.logging.tqdm import trange
 
 from ettcl.encoding.encoder import Encoder
-from ettcl.searching.searcher import Searcher, SearchResult, TensorType, TextQueries
+from ettcl.indexing.indexer import IndexPath
+from ettcl.logging.tqdm import trange
+from ettcl.searching.searcher import BatchResult, Searcher, TensorLike, TensorType, TextQueries
 
 
 @dataclass
 class ColBERTSearcherConfig:
     ncells: int | None = None
+    centroid_score_threshold: float | None = None
+    ndocs: int | None = None
 
 
 @dataclass
@@ -26,13 +27,24 @@ class _SearcherSettings(RunSettings, SearchSettings, BaseConfig):
 class ColBERTSearcher(Searcher):
     def __init__(
         self,
-        index_path: str,
+        index_path: str | IndexPath,
         encoder: Encoder,
         config: ColBERTSearcherConfig = ColBERTSearcherConfig(),
     ) -> None:
         self.encoder = encoder
         self.config = config
-        self.index_path = index_path
+        # We are using this IndexPath str wrapper to ensure that
+        # huggingface datasets map method notices any file changes
+        # in the index (e.g. when rebuilding the index)
+        self.__index_path = IndexPath(index_path)
+
+    @property
+    def index_path(self) -> IndexPath:
+        return self.__index_path
+
+    @index_path.setter
+    def index_path(self, path: str | IndexPath) -> None:
+        self.__index_path = IndexPath(path)
 
     def search(
         self,
@@ -42,7 +54,7 @@ class ColBERTSearcher(Searcher):
         use_gpu: bool = True,
         progress_bar: bool = True,
         rank: int | str = "#",
-    ) -> SearchResult:
+    ) -> BatchResult:
         match queries:
             case str():
                 queries = [queries]
@@ -66,31 +78,33 @@ class ColBERTSearcher(Searcher):
             self.ranker.cpu()
 
         with Run().context(run_config):
-
             _config = _SearcherSettings.from_existing(Run().config)
-            _config.configure(ncells=self.config.ncells)
+            _config.configure(
+                ncells=self.config.ncells,
+                centroid_score_threshold=self.config.centroid_score_threshold,
+                ndocs=self.config.ndocs,
+            )
 
-            print(f"{rank}[{self.ranker.device}]> Searching ...")
+            print(f"{rank}[{self.ranker.device}]> Encoding ...")
             Q = self.encoder.encode_queries(queries, progress_bar=progress_bar)
+            print(f"{rank}[{self.ranker.device}]> Searching ...")
             return self._search_all_Q(Q, k, _config, return_tensors, progress_bar)
 
     def _search_all_Q(
         self,
-        Q: torch.Tensor,
+        Q: list[torch.Tensor],
         k: int,
         args: _SearcherSettings,
         return_tensors: bool | str | TensorType,
         progress_bar: bool = True,
-    ) -> SearchResult:
-        trange_ = trange if progress_bar else range
+    ) -> BatchResult:
         pids, scores = zipstar(
             [
-                self.dense_search(Q[query_idx : query_idx + 1], k, args, return_tensors)
-                for query_idx in trange_(Q.size(0))
+                self.dense_search(Q[query_idx], k, args, return_tensors)
+                for query_idx in trange(len(Q), disable=not progress_bar)
             ]
         )
-
-        return {"match_pids": pids, "match_scores": scores}
+        return BatchResult(pids, scores)
 
     def dense_search(
         self,
@@ -98,7 +112,7 @@ class ColBERTSearcher(Searcher):
         k: int,
         args: _SearcherSettings,
         return_tensors: bool | str | TensorType = "pt",
-    ) -> dict[str, list | torch.Tensor | np.ndarray]:
+    ) -> tuple[TensorLike, TensorLike]:
         if k <= 10:
             if args.ncells is None:
                 args.configure(ncells=1)
@@ -121,16 +135,16 @@ class ColBERTSearcher(Searcher):
             if args.ndocs is None:
                 args.configure(ndocs=max(k * 4, 4096))
 
-        pids, scores = self.ranker.rank(args, Q)
+        pids, scores = self.ranker.rank(args, Q.unsqueeze(0))
 
         # move to cpu
-        pids, scores = pids[:k].cpu(), scores[:k].cpu()
+        pids, scores = pids[:k].cpu(), scores[:k].cpu().to(torch.float32)
 
         match return_tensors:
-            case False:
-                return pids.tolist(), scores.tolist()
             case True | "pt":
                 return pids, scores
+            case False:
+                return pids.tolist(), scores.tolist()
             case "np":
                 return pids.numpy(), scores.numpy()
             case _:

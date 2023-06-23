@@ -1,2 +1,2 @@
-from .base_indexer import BaseIndexer, IndexerConfig
-from .colbert import ColBERTIndexer
+from .colbert import ColBERTIndexer, ColBERTIndexerConfig
+from .indexer import Indexer, IndexPath

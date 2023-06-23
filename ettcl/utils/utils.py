@@ -1,4 +1,4 @@
-import os
+from time import perf_counter
 
 import torch
 
@@ -29,3 +29,19 @@ def to_gpu_list(gpus: Devices) -> list[int]:
     ), f"Not all devices from {gpus} are visible!"
 
     return gpus
+
+
+class catchtime:
+    def __init__(self, output_to_console: bool = True, desc: str = "Time"):
+        self.output_to_console = output_to_console
+        self.desc = desc
+
+    def __enter__(self):
+        self.time = perf_counter()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.time = perf_counter() - self.time
+        if self.output_to_console:
+            self.readout = f"{self.desc}: {self.time:.3f} seconds"
+            print(self.readout)

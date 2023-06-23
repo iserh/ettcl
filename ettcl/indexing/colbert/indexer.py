@@ -1,5 +1,7 @@
 import multiprocessing as mp
 import os
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
@@ -7,22 +9,33 @@ from colbert.infra.config.config import RunConfig
 from colbert.infra.launcher import Launcher
 from colbert.infra.run import Run
 
-from ettcl.indexing.base_indexer import BaseIndexer
+from ettcl.encoding.encoder import Encoder
 from ettcl.indexing.colbert.collection_indexer import index
 from ettcl.indexing.colbert.settings import _IndexerSettings
+from ettcl.indexing.indexer import Indexer, IndexPath
 from ettcl.utils.utils import Devices, to_gpu_list
 
 
-class ColBERTIndexer(BaseIndexer):
+@dataclass
+class ColBERTIndexerConfig:
+    nbits: int = 2
+    kmeans_niters: int = 4
+
+
+class ColBERTIndexer(Indexer):
+    def __init__(self, encoder: Encoder, config: ColBERTIndexerConfig = ColBERTIndexerConfig()) -> None:
+        self.encoder = encoder
+        self.config = config
+
     def index(
         self,
-        index_path: str,
+        output_path: str | Path,
         collection: list[str],
         gpus: Devices = True,
         n_processes: int = -1,
         resume: bool = False,
-    ) -> None:
-        index_path = Path(index_path)
+    ) -> IndexPath:
+        output_path = Path(output_path)
         gpus = to_gpu_list(gpus)
         use_gpu = len(gpus) > 0
 
@@ -42,16 +55,16 @@ class ColBERTIndexer(BaseIndexer):
             config = _IndexerSettings.from_existing(Run().config)
             config.configure(
                 resume=resume,
-                index_path=str(index_path),
+                index_path=str(output_path),
                 nbits=self.config.nbits,
                 dim=self.encoder.embedding_dim,
                 bsize=512,
                 partitions=None,
             )
 
-            index_path.mkdir(parents=True, exist_ok=True)
+            output_path.mkdir(parents=True, exist_ok=True)
             if not resume:
-                self.erase(index_path)
+                self.erase(output_path)
 
             if n_processes > 1:
                 # launch multiprocessed
@@ -62,6 +75,8 @@ class ColBERTIndexer(BaseIndexer):
                 if use_gpu:
                     # set back to previous device
                     torch.cuda.set_device(prev_device)
+
+        return IndexPath(output_path)
 
     def __launch(self, collection: list[str], config: _IndexerSettings) -> None:
         manager = mp.Manager()
@@ -78,9 +93,7 @@ class ColBERTIndexer(BaseIndexer):
             filename = os.path.join(index_path, filename)
 
             delete = filename.endswith(".json")
-            delete = delete and (
-                "metadata" in filename or "doclen" in filename or "plan" in filename
-            )
+            delete = delete and ("metadata" in filename or "doclen" in filename or "plan" in filename)
             delete = delete or filename.endswith(".pt")
 
             if delete:
@@ -88,6 +101,7 @@ class ColBERTIndexer(BaseIndexer):
 
         if len(deleted):
             print(f"#> Will delete {len(deleted)} files already at {index_path}")
+            time.sleep(10)
 
             for filename in deleted:
                 os.remove(filename)
