@@ -1,6 +1,5 @@
 import json
 import os
-from dataclasses import dataclass
 from enum import Enum
 
 from transformers import AutoTokenizer, logging
@@ -19,20 +18,6 @@ COLBERT_TOKENIZER_CONFIG_FILE = "colbert_tokenizer_config.json"
 class TokenizerMode(str, Enum):
     query = "query"
     doc = "doc"
-
-
-@dataclass
-class ColBERTTokenizerConfig:
-    query_token: str | None = "[unused0]"
-    doc_token: str | None = "[unused1]"
-    query_augmentation: bool = False
-    attend_to_mask_tokens: bool = False
-    query_maxlen: int = 512
-    doc_maxlen: int = 512
-
-    def __post_init__(self) -> None:
-        if self.attend_to_mask_tokens and not self.query_augmentation:
-            logger.warning("With `query_augmentation` disabled, `attend_to_mask_tokens` (set to True) will be ignored.")
 
 
 class ColBERTTokenizer:
@@ -74,6 +59,16 @@ class ColBERTTokenizer:
                 "to match the models embedding matrix."
             )
 
+    def to_dict(self) -> dict:
+        return {
+            "query_token": self.query_token,
+            "doc_token": self.doc_token,
+            "query_maxlen": self.query_maxlen,
+            "doc_maxlen": self.doc_maxlen,
+            "query_augmentation": self.query_augmentation,
+            "attend_to_mask_tokens": self.attend_to_mask_tokens,
+        }
+
     def save_pretrained(
         self,
         save_directory: str | os.PathLike,
@@ -86,15 +81,7 @@ class ColBERTTokenizer:
             save_directory, legacy_format, filename_prefix, push_to_hub, **kwargs
         )
 
-        colbert_tokenizer_config = {
-            "query_token": self.query_token,
-            "doc_token": self.doc_token,
-            "query_maxlen": self.query_maxlen,
-            "doc_maxlen": self.doc_maxlen,
-            "query_augmentation": self.query_augmentation,
-            "attend_to_mask_tokens": self.attend_to_mask_tokens,
-        }
-
+        colbert_tokenizer_config = self.to_dict()
         colbert_tokenizer_config_file = os.path.join(
             save_directory, (filename_prefix + "-" if filename_prefix else "") + COLBERT_TOKENIZER_CONFIG_FILE
         )

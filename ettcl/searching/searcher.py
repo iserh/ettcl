@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
 from collections import UserDict
 from enum import Enum
+from typing import Any
 
 import numpy as np
 import torch
+
+from ettcl.indexing.indexer import IndexPath
 
 TextQueries = str | list[str] | dict[int | str, str]
 TensorLike = torch.Tensor | np.ndarray | list
@@ -51,6 +54,16 @@ class TensorType(str, Enum):
 class Searcher(ABC):
     """`Interface` that provides methods to search for most
     similar passage ids given query texts"""
+
+    @property
+    @abstractmethod
+    def index_path(self) -> IndexPath:
+        pass
+
+    @index_path.setter
+    @abstractmethod
+    def index_path(self, path: str | IndexPath) -> None:
+        pass
 
     @abstractmethod
     def search(

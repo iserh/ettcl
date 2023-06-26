@@ -10,6 +10,9 @@ from ettcl.encoding.encoder import Encoder
 from ettcl.indexing.indexer import IndexPath
 from ettcl.logging.tqdm import trange
 from ettcl.searching.searcher import BatchResult, Searcher, TensorLike, TensorType, TextQueries
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 @dataclass
@@ -88,9 +91,9 @@ class ColBERTSearcher(Searcher):
                 ndocs=self.config.ndocs,
             )
 
-            print(f"{rank}[{self.ranker.device}]> Encoding ...")
+            logger.debug(f"{rank}[{self.ranker.device}]> Encoding ...")
             Q = self.encoder.encode_queries(queries, progress_bar=progress_bar)
-            print(f"{rank}[{self.ranker.device}]> Searching ...")
+            logger.debug(f"{rank}[{self.ranker.device}]> Searching ...")
             return self._search_all_Q(Q, k, _config, return_tensors, progress_bar)
 
     def _search_all_Q(

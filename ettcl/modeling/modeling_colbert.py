@@ -7,9 +7,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
+from transformers import Trainer
 from transformers.models.auto.auto_factory import _get_model_class
 
 from ettcl.modeling.configuration_colbert import ColBERTConfig
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 @dataclass
@@ -69,6 +73,19 @@ class ColBERTModel(PreTrainedModel):
         self.post_init()
 
     @classmethod
+    def cast(cls, model: "ColBERTModel") -> "ColBERTModel":
+        base_model_class = getattr(model, model.base_model_prefix).__class__
+        obj = cls(model.config, base_model_class)
+        missing_keys, unexpected_keys = obj.load_state_dict(model.state_dict(), strict=False)
+        missing_keys = [key for key in missing_keys if key not in cls._keys_to_ignore_on_load_missing]
+        unexpected_keys = [key for key in unexpected_keys if key not in cls._keys_to_ignore_on_load_unexpected]
+        if len(missing_keys):
+            logger.warning(f"Missing keys {missing_keys}.")
+        if len(unexpected_keys):
+            logger.warning(f"Got unexpected keys {unexpected_keys}.")
+        return obj
+
+    @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
         config = kwargs.pop("config", None)
         if config is None:
@@ -94,6 +111,10 @@ class ColBERTModel(PreTrainedModel):
     @property
     def LM(self) -> PreTrainedModel:
         return getattr(self, self.base_model_prefix)
+
+    def freeze_base_model(self) -> None:
+        for param in getattr(self, self.base_model_prefix).parameters():
+            param.requires_grad = False
 
     def forward(
         self,
@@ -142,36 +163,30 @@ class ColBERTModel(PreTrainedModel):
         )
 
 
-class ColBERTForReranking(ColBERTModel):
-    _keys_to_ignore_on_load_missing = set(["default_labels"])
-    _keys_to_ignore_on_save = set(["default_labels"])
+class ColBERTTrainer(Trainer):
 
-    def __init__(self, config: ColBERTConfig, base_model_class: type[PreTrainedModel] = None) -> None:
-        super().__init__(config, base_model_class)
-        self.register_buffer("default_labels", torch.zeros(1, dtype=torch.int64))
-
-    def forward(
-        self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        target_scores: Optional[torch.Tensor] = None,
-        return_dict: Optional[bool] = None,
-    ):
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+    def compute_loss(self, model, inputs, return_outputs=False):
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
+        token_type_ids = inputs.get("token_type_ids", None)
+        labels = inputs.get("labels", None)
+        target_scores = inputs.get("target_scores", None)
 
         # input has shape (BATCH, nway+1, input_length)
         batch_size = input_ids.shape[0]
         nway = input_ids.shape[1] - 1
         input_length = input_ids.shape[2]
 
-        outputs = super().forward(
+        outputs = model(
             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,
             attention_mask=attention_mask.view(-1, input_length) if attention_mask is not None else None,
             token_type_ids=token_type_ids.view(-1, input_length) if token_type_ids is not None else None,
-            return_dict=return_dict,
         )
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
 
         # outputs[0] holds normalized output, shape (BATCH * (nway+1), input_length, embedding_dim)
         embedding_dim = outputs[0].shape[-1]
@@ -191,37 +206,109 @@ class ColBERTForReranking(ColBERTModel):
         # reduce these scores via `MaxSim`
         scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway)
 
-        if labels is None:
+        if labels is None and target_scores is None:
             # default labels <=> 0 for whole batch, which is selecting the first document as target for cross_entropy_loss
             labels = self.default_labels.broadcast_to(batch_size)
 
         loss = None
-        if labels.shape == torch.Size([batch_size]):
-            loss = F.cross_entropy(scores, labels)
-
-        else:
+        if target_scores is not None:
             # if target_scores are provided (e.g. from a cross-encoder) knowledge is distilled by computing kl divergence of the ranking distributions
-            assert labels.shape == torch.Size(
+            assert target_scores.shape == torch.Size(
                 [batch_size, nway]
-            ), f"Expected label scores to of shape {torch.Size([batch_size, nway])} (bsize, nway), got {labels.shape}"
+            ), f"Expected label scores to of shape {torch.Size([batch_size, nway])} (bsize, nway), got {target_scores.shape}"
 
-            target_scores = labels * self.config.distillation_alpha
+            target_scores = target_scores * self.config.distillation_alpha
             target_scores = torch.nn.functional.log_softmax(target_scores, dim=-1)
 
             log_scores = F.log_softmax(scores, dim=-1)
             loss = F.kl_div(log_scores, target_scores, reduction="batchmean", log_target=True)
 
-        # TODO: in-batch negatives loss
+        else:
+            loss = F.cross_entropy(scores, labels)
 
-        if not return_dict:
-            return (scores, unreduced_scores)
+        return (loss, outputs) if return_outputs else loss
 
-        return ColbertRerankingOutput(
-            scores=scores,
-            unreduced_scores=unreduced_scores,
-            loss=loss.unsqueeze(0),
-            hidden_states=outputs.hidden_states,
-        )
+
+# class ColBERTForReranking(ColBERTModel):
+#     _keys_to_ignore_on_load_missing = set(["default_labels"])
+#     _keys_to_ignore_on_save = set(["default_labels"])
+
+#     def __init__(self, config: ColBERTConfig, base_model_class: type[PreTrainedModel] = None) -> None:
+#         super().__init__(config, base_model_class)
+#         self.register_buffer("default_labels", torch.zeros(1, dtype=torch.int64))
+
+#     def forward(
+#         self,
+#         input_ids: Optional[torch.Tensor] = None,
+#         attention_mask: Optional[torch.Tensor] = None,
+#         token_type_ids: Optional[torch.Tensor] = None,
+#         labels: Optional[torch.Tensor] = None,
+#         target_scores: Optional[torch.Tensor] = None,
+#         return_dict: Optional[bool] = None,
+#     ):
+#         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+#         # input has shape (BATCH, nway+1, input_length)
+#         batch_size = input_ids.shape[0]
+#         nway = input_ids.shape[1] - 1
+#         input_length = input_ids.shape[2]
+
+#         outputs = super().forward(
+#             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,
+#             attention_mask=attention_mask.view(-1, input_length) if attention_mask is not None else None,
+#             token_type_ids=token_type_ids.view(-1, input_length) if token_type_ids is not None else None,
+#             return_dict=return_dict,
+#         )
+
+#         # outputs[0] holds normalized output, shape (BATCH * (nway+1), input_length, embedding_dim)
+#         embedding_dim = outputs[0].shape[-1]
+#         # reshape to (BATCH, nway+1, input_length, embedding_dim)
+#         sequence_output = outputs[0].view(-1, nway + 1, input_length, embedding_dim)
+#         # select queries
+#         Q = sequence_output[:, 0]
+#         # select nway documents, view as (BATCH * nway, input_length, embedding_dim)
+#         D = sequence_output[:, 1:].reshape(-1, *sequence_output.shape[2:])
+#         D_mask = attention_mask[:, 1:].reshape(-1, *attention_mask.shape[2:])
+
+#         # Repeat each query encoding for every corresponding document, shape (BATCH * nway, input_length, embedding_dim)
+#         Q_duplicated = Q.repeat_interleave(nway, dim=0).contiguous()
+
+#         # compute similarity scores between all embeddings using batched matrix-multiplication
+#         unreduced_scores = colbert_score(Q_duplicated, D)
+#         # reduce these scores via `MaxSim`
+#         scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway)
+
+#         if labels is None:
+#             # default labels <=> 0 for whole batch, which is selecting the first document as target for cross_entropy_loss
+#             labels = self.default_labels.broadcast_to(batch_size)
+
+#         loss = None
+#         if labels.shape == torch.Size([batch_size]):
+#             loss = F.cross_entropy(scores, labels)
+
+#         else:
+#             # if target_scores are provided (e.g. from a cross-encoder) knowledge is distilled by computing kl divergence of the ranking distributions
+#             assert labels.shape == torch.Size(
+#                 [batch_size, nway]
+#             ), f"Expected label scores to of shape {torch.Size([batch_size, nway])} (bsize, nway), got {labels.shape}"
+
+#             target_scores = labels * self.config.distillation_alpha
+#             target_scores = torch.nn.functional.log_softmax(target_scores, dim=-1)
+
+#             log_scores = F.log_softmax(scores, dim=-1)
+#             loss = F.kl_div(log_scores, target_scores, reduction="batchmean", log_target=True)
+
+#         # TODO: in-batch negatives loss
+
+#         if not return_dict:
+#             return (scores, unreduced_scores)
+
+#         return ColbertRerankingOutput(
+#             scores=scores,
+#             unreduced_scores=unreduced_scores,
+#             loss=loss.unsqueeze(0),
+#             hidden_states=outputs.hidden_states,
+#         )
 
 
 def colbert_score(Q: torch.Tensor, D: torch.Tensor) -> torch.Tensor:
