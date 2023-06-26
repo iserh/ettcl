@@ -36,7 +36,10 @@ class ColBERTSearcher(Searcher):
         # We are using this IndexPath str wrapper to ensure that
         # huggingface datasets map method notices any file changes
         # in the index (e.g. when rebuilding the index)
-        self.__index_path = IndexPath(index_path)
+        if index_path is not None:
+            self.__index_path = IndexPath(index_path)
+        else:
+            self.__index_path = None
 
     @property
     def index_path(self) -> IndexPath:

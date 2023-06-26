@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 from pathlib import Path
+from typing import Any
 
 import torch
 from transformers import Trainer, TrainingArguments
@@ -10,35 +11,96 @@ from ettcl.core.triple_sampling import (
     TripleSamplerDataset,
     TripleSamplingData,
 )
+from datasets import load_dataset
 from ettcl.encoding import ColBERTEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.modeling import ColBERTConfig, ColBERTForReranking, ColBERTModel, ColBERTTokenizer
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
 from ettcl.utils.multiprocessing import run_multiprocessed
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+import wandb
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 def setup_configs_for_colbert(
     pretrained_model_name_or_path: str | os.PathLike,
     model_kwargs: dict[str],
     training_kwargs: dict[str],
-    indexing_kwargs: dict[str],
-    searching_kwargs: dict[str],
+    indexing_kwargs: dict[str] | None = None,
+    searching_kwargs: dict[str] | None = None,
+    searching_kwargs_sampling: dict[str] | None = None,
+    **unused_kwargs,
 ) -> dict[str]:
     model_config = ColBERTConfig.from_pretrained(pretrained_model_name_or_path, **model_kwargs)
     training_args = TrainingArguments(**training_kwargs)
-    indexer_config = ColBERTIndexerConfig(**indexing_kwargs)
+
+    if indexing_kwargs is not None:
+        indexer_config = ColBERTIndexerConfig(**indexing_kwargs)
+    else:
+        indexer_config = None
 
     if searching_kwargs is not None:
         searcher_config = ColBERTSearcherConfig(**searching_kwargs)
     else:
         searcher_config = None
 
+    if searching_kwargs_sampling is not None:
+        searcher_config_sampling = ColBERTSearcherConfig(**searching_kwargs_sampling)
+    else:
+        searcher_config_sampling = None
+
     return {
         "model_config": model_config,
         "training_args": training_args,
         "indexer_config": indexer_config,
         "searcher_config": searcher_config,
+        "searcher_config_sampling": searcher_config_sampling,
     }
+
+
+def evaluate(train_dataset, test_dataset, searcher, ks: list[int], label_column: str = "label", text_column: str = "text"):
+    max_k = max(ks)
+    print("Searching Eval")
+    test_dataset.set_format(None)  # crucial to avoid leaked semaphore objects in map multiprocessing
+    test_dataset = test_dataset.map(
+        run_multiprocessed(searcher.search),
+        input_columns=text_column,
+        fn_kwargs={"k": max_k},
+        batched=True,
+        num_proc=torch.cuda.device_count(),
+        with_rank=True,
+        desc="Searching",
+    )
+
+    train_dataset.set_format("pt")
+    test_dataset.set_format("pt")
+
+    match_pids = test_dataset["match_pids"]
+    if isinstance(match_pids, list):
+        logger.warning(f"Fewer elements than k={max_k} matched, filling up with (-1).")
+        match_pids = torch.nn.utils.rnn.pad_sequence(match_pids, batch_first=True, padding_value=-1)
+
+    match_labels = train_dataset[label_column][match_pids.tolist()]
+
+    print("Compute Metrics")
+    metrics = {}
+    for k in ks:
+        knn = match_labels[:, :k]
+        y_pred = torch.mode(knn)[0]
+        assert -1 not in y_pred, "Not enough matches"
+
+        metrics[f"accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset[label_column])
+        metrics[f"precision/micro/{k}"] = precision_score(y_pred=y_pred, y_true=test_dataset[label_column], average="micro")
+        metrics[f"precision/macro/{k}"] = precision_score(y_pred=y_pred, y_true=test_dataset[label_column], average="macro")
+        metrics[f"recall/micro/{k}"] = recall_score(y_pred=y_pred, y_true=test_dataset[label_column], average="micro")
+        metrics[f"recall/macro/{k}"] = recall_score(y_pred=y_pred, y_true=test_dataset[label_column], average="macro")
+        metrics[f"f1/micro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[label_column], average="micro")
+        metrics[f"f1/macro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[label_column], average="macro")
+
+    print(metrics)
+    wandb.run.log(metrics)
 
 
 def train_colbert(
@@ -46,15 +108,24 @@ def train_colbert(
     pretrained_model_name_or_path: str | os.PathLike,
     model_config: ColBERTConfig,
     training_args: TrainingArguments,
-    indexer_config: ColBERTIndexerConfig,
     tokenizer_kwargs: dict[str],
     sampling_kwargs: dict[str],
+    do_eval: bool = True,
+    do_test: bool = False,
+    eval_ks: list[int] = [1],
     rebuild_index_interval: int = 1,
-    do_eval: bool = False,
+    indexer_config: ColBERTIndexerConfig | None = None,
     searcher_config: ColBERTSearcherConfig | None = None,
-    searcher_k: int | None = None,
+    searcher_config_sampling: ColBERTSearcherConfig | None = None,
+    searcher_k_sampling: int | None = None,
     subsample_train: int | bool = False,
     subsample_test: int | bool = False,
+    label_column: str = "label",
+    text_column: str = "text",
+    remove_columns: list[str] = [],
+    freeze_base_model: bool = False,
+    config: dict | None = None,
+    **unused_kwargs,
 ) -> None:
     model = ColBERTForReranking.from_pretrained(pretrained_model_name_or_path, config=model_config)
     tokenizer = ColBERTTokenizer.from_pretrained(pretrained_model_name_or_path, **tokenizer_kwargs)
@@ -65,45 +136,63 @@ def train_colbert(
     num_train_epochs = training_args.num_train_epochs
     do_searched_sampling = sampling_kwargs.get("sampling_method", "random") == "searched"
     assert (
-        do_searched_sampling == searcher_config is not None == searcher_k is not None
+        not do_searched_sampling or (searcher_config_sampling is not None and searcher_k_sampling is not None)
     ), "Searcher Config required when performing `searched` sampling."
 
-    train_dataset = load_dataset(dataset_name_or_path, split="train")
-    if do_eval:
-        test_dataset = load_dataset(dataset_name_or_path, split="test")
-    else:
-        raise NotImplementedError()
+    train_dataset = load_dataset(dataset_name_or_path, split="train").remove_columns(remove_columns)
 
+    if do_test:
+        raise NotImplementedError()
+    if do_eval:
+        train_dev_dataset = train_dataset.train_test_split(0.2, stratify_by_column=label_column)
+        train_dataset = train_dev_dataset["train"]
+        dev_dataset = train_dev_dataset["test"]
     if subsample_train is not False:
         train_dataset_ = train_dataset
-        train_dataset = train_dataset_.shuffle().take(subsample_train)
 
-    print("Build initial index")
-    model.__class__ = ColBERTModel  # cast to ColBERTModel
-    index_path = output_dir / f"checkpoint-{global_step}" / "index"
-    indexer.index(index_path, train_dataset["text"], gpus=True)
-
-    sampling_data_builder = TripleSamplingData(train_dataset["label"], **sampling_kwargs)
+    sampling_data_builder = TripleSamplingData(train_dataset[label_column], **sampling_kwargs)
     data_collator_for_triples = DataCollatorForTriples(tokenizer)
     if do_searched_sampling:
-        sampling_input_columns = ["match_pids", "match_scores", "label"]
-        searcher = ColBERTSearcher(index_path, encoder, searcher_config)
+        sampling_input_columns = ["match_pids", "match_scores", label_column]
+        report_missing_values_in_sampling = True
     else:
-        sampling_input_columns = ["label"]
+        report_missing_values_in_sampling = False
+        sampling_input_columns = [label_column]
+
+    # START WANDB
+    wandb.init(dir=output_dir, config=config)
+
+    # INITIAL SUBSAMPLING AND INDEX CREATION
+
+    if subsample_train is not False:
+            print("Subsample Train Dataset")
+            train_dataset = train_dataset_.shuffle().select(range(subsample_train))
+
+    if do_searched_sampling or do_eval:
+        print("build initial index")
+        index_path = output_dir / f"checkpoint-0" / "index"
+        model.__class__ = ColBERTModel  # cast to ColBERTModel
+        indexer.index(index_path, train_dataset[text_column], gpus=True)
+    if do_searched_sampling:
+        searcher_sampling = ColBERTSearcher(index_path, encoder, searcher_config_sampling)
+    if do_eval:
+        searcher = ColBERTSearcher(index_path, encoder, searcher_config)
+        evaluate(train_dataset, dev_dataset, searcher, eval_ks, label_column, text_column)
+
+    # TRAIN LOOP
 
     epoch, global_step = 0, 0
     while epoch < num_train_epochs:
         print(f"\n\n## EPOCH {epoch}\n")
 
         sampling_dataset = train_dataset
+        sampling_dataset.set_format(None)
         if do_searched_sampling:
-            print("Search dataset")
-            searcher.index_path = index_path
-            sampling_dataset.set_format(None)  # crucial to avoid leaked semaphore objects in map multiprocessing
+            print("Searching TRAIN")
             sampling_dataset = sampling_dataset.map(
-                run_multiprocessed(searcher.search),
-                input_columns="text",
-                fn_kwargs={"k": searcher_k},
+                run_multiprocessed(searcher_sampling.search),
+                input_columns=text_column,
+                fn_kwargs={"k": searcher_k_sampling},
                 batched=True,
                 num_proc=torch.cuda.device_count(),
                 with_rank=True,
@@ -111,19 +200,24 @@ def train_colbert(
             )
 
         print("Create Sampling data")
-        sampling_dataset.set_format("numpy")
         sampling_dataset = sampling_dataset.map(
             sampling_data_builder,
             input_columns=sampling_input_columns,
+            fn_kwargs={"return_missing": report_missing_values_in_sampling},
             with_indices=True,
             remove_columns=sampling_input_columns,
         )
 
+        if report_missing_values_in_sampling:
+            missing_total = sum(sampling_dataset["missing"])
+            sampling_dataset = sampling_dataset.remove_columns("missing")
+            print(f"Missing {missing_total} values in sampling.")
+
         print("Tokenize")
         sampling_dataset = sampling_dataset.map(
             lambda batch: tokenizer(batch, truncation=True),
-            input_columns="text",
-            remove_columns="text",
+            input_columns=text_column,
+            remove_columns=text_column,
             batched=True
         )
 
@@ -140,6 +234,9 @@ def train_colbert(
 
         print("Train")
         model.__class__ = ColBERTForReranking  # cast to ColBERTForReranking
+        if freeze_base_model:
+            for param in getattr(model, model.base_model_prefix).parameters():
+                param.requires_grad = False
         trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
 
         global_step = trainer.state.global_step
@@ -147,13 +244,17 @@ def train_colbert(
         tokenizer.save_pretrained(output_dir / f"checkpoint-{global_step}")
 
         if subsample_train is not False:
-            print("Reshuffle train dataset subsample")
-            train_dataset = train_dataset_.shuffle().take(subsample_train)
+            print("Subsample Train Dataset")
+            train_dataset = train_dataset_.shuffle().select(range(subsample_train))
 
-        print("Rebuild index")
-        index_path = output_dir / f"checkpoint-{global_step}" / "index"
-        model.__class__ = ColBERTModel  # cast to ColBERTModel
-        indexer.index(index_path, train_dataset["text"], gpus=True)
+        if do_searched_sampling or do_eval:
+            print("Rebuild index")
+            index_path = output_dir / f"checkpoint-{global_step}" / "index"
+            model.__class__ = ColBERTModel  # cast to ColBERTModel
+            indexer.index(index_path, train_dataset[text_column], gpus=True)
+            searcher.index_path = index_path
+        if do_eval:
+            evaluate(train_dataset, dev_dataset, searcher, eval_ks, label_column, text_column)
 
     # print("Save latest model")
     # trainer.save_model(output_dir / "latest")
@@ -162,33 +263,20 @@ def train_colbert(
     # print("Build latest index")
     # # for indexing/searching cast model to basic ColBERTModel
     # model.__class__ = ColBERTModel
-    # indexer.index(output_dir / f"latest" / "index", train_dataset["text"], gpus=True)
+    # indexer.index(output_dir / f"latest" / "index", train_dataset[text_column], gpus=True)
 
 
 if __name__ == "__main__":
-    from datasets import load_dataset
+    import yaml
 
-    model_name_or_path = "bert-base-uncased"
-    dataset_name = "imdb"
-    model_config = ColBERTConfig.from_pretrained(model_name_or_path, compression_dim=128)
+    with open("configs/training_config.yml", "r") as f:
+        config = yaml.load(f, yaml.SafeLoader)
 
-    train_dataset = load_dataset(dataset_name, split="train")
-    # train_dataset = train_dataset.rename_column("fine_label", "label")
-    training_args = TrainingArguments(
-        output_dir=Path("training") / dataset_name / Path(model_name_or_path).name,
-        save_total_limit=1,
-        save_strategy="epoch",
-        save_steps=1,
-        num_train_epochs=1,
-        # per_device_train_batch_size=16,
-        auto_find_batch_size=True,
-        optim="adamw_torch",
+    config["training_kwargs"]["output_dir"] = os.path.join(
+        "training",
+        os.path.basename(config["dataset_name_or_path"]),
+        os.path.basename(config["pretrained_model_name_or_path"]),
     )
 
-    train(
-        train_dataset=train_dataset,
-        model_name_or_path=model_name_or_path,
-        output_dir=f"indexes/finetuning/{model_name_or_path}",
-        model_config=model_config,
-        training_args=training_args,
-    )
+    setup_configs = setup_configs_for_colbert(**config)
+    train_colbert(**setup_configs, **config, config=config)

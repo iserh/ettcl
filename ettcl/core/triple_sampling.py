@@ -15,8 +15,6 @@ from transformers import DataCollatorWithPadding
 from ettcl.searching import Searcher
 from ettcl.utils.multiprocessing import run_multiprocessed
 
-Triple = tuple[int, ...]
-
 logger = getLogger(__name__)
 
 
@@ -47,14 +45,16 @@ class TripleSamplerDataset:
     def __init__(self, dataset_with_sampling_pids: Dataset, nway: int = 2) -> None:
         """Requires columns `"""
         self.sampling_data = dataset_with_sampling_pids.select_columns(self.triple_columns)
+        self.sampling_data.set_format("pt")
         self.dataset = dataset_with_sampling_pids.remove_columns(self.triple_columns)
+        self.dataset.set_format("pt")
         self.nway = nway
 
     def __len__(self) -> int:
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        triple = sample_triple(**self.sampling_data, idx=idx, nway=self.nway)
+        triple = sample_triple(**self.sampling_data[idx], idx=idx, nway=self.nway)
         features = self.dataset[triple]
         # unfold features
         return [{k: v[i] for k, v in features.items()} for i in range(len(triple))]
@@ -125,9 +125,11 @@ class TripleSamplingData:
             return sampling_data
 
     def sampling_data_from_matches(
-        self, match_pids: np.ndarray, match_scores: np.ndarray, label: int, idx: int | None = None
+        self, match_pids: np.ndarray, match_scores: np.ndarray, label: int, idx: int | None = None, return_missing: bool = True, *args, **kwargs
     ) -> dict[str, np.ndarray]:
         """Does not work batched!"""
+        match_pids = np.array(match_pids)
+        match_scores = np.array(match_scores)
         # compute a mask of which matched passages have also the same label
         label_pid_mask = np.isin(match_pids, self.pids_for_label[label], assume_unique=True)
         # matched pids that have the same label
@@ -145,12 +147,13 @@ class TripleSamplingData:
             positive_pids = np.random.choice(self.pids_for_label[label], size=self.fill_missing)
             positive_scores = None
 
-        if len(negative_pids) < self.nway - 1:
-            logger.warning(
-                f"Not enough passages with different label ({label=}) was matched in the retrieval process "
-                f"(found only {len(negative_pids)}, but need at least {self.nway - 1}). "
-                f"Using a random sample to fill up to {self.fill_missing=}."
-            )
+        n_missing = max(0, self.fill_missing - len(negative_pids))
+        if n_missing:
+            # logger.warning(
+            #     f"Not enough passages with different label ({label=}) was matched in the retrieval process "
+            #     f"(found only {len(negative_pids)}, but need at least {self.fill_missing}). "
+            #     f"Using {n_missing} random samples."
+            # )
             # fill pids with other pids that have different labels
             pids_with_different_label = np.concatenate(
                 [self.pids_for_label[l] for l in self.unique_labels if l != label]
@@ -158,10 +161,10 @@ class TripleSamplingData:
             non_retrieved_negatives = pids_with_different_label[
                 ~np.isin(pids_with_different_label, negative_pids, assume_unique=True)
             ]
-            negative_fill_pids = np.random.choice(non_retrieved_negatives, size=self.fill_missing - len(negative_pids))
+            negative_fill_pids = np.random.choice(non_retrieved_negatives, size=n_missing)
             negative_pids = np.concatenate([negative_pids, negative_fill_pids])
             # fill scores with zeros
-            fill_scores = np.zeros(len(negative_fill_pids))
+            fill_scores = np.full(n_missing, fill_value=negative_scores.min() if len(negative_scores) else 1)
             negative_scores = np.concatenate([negative_scores, fill_scores])
 
         match self.probability_type:
@@ -171,26 +174,28 @@ class TripleSamplingData:
                 negative_probs = negative_scores
             case "ranks":
                 # use ranking as probabilities
-                positive_probs = np.arange(len(positive_pids), 0, -1) if len(positive_pids) > 1 else None
-                negative_probs = np.arange(len(negative_pids), 0, -1) if len(negative_pids) > 1 else None
+                positive_probs = np.arange(len(positive_pids), 0, -1).astype(np.float32) if len(positive_pids) > 1 else None
+                negative_probs = np.arange(len(negative_pids), 0, -1).astype(np.float32) if len(negative_pids) > 1 else None
             case "uniform":
                 positive_probs = None
                 negative_probs = None
 
-        # normalize probs
-        if positive_probs is not None:
-            positive_probs = normalize_probs(positive_probs)
-        if negative_probs is not None:
-            negative_probs = normalize_probs(negative_probs)
+        positive_probs = normalize_probs(positive_probs) if positive_probs is not None else None
+        negative_probs = normalize_probs(negative_probs) if negative_probs is not None else None
 
-        return {
-            "positive_pids": positive_pids,
-            "negative_pids": positive_pids,
-            "positive_probs": positive_pids,
-            "negative_probs": positive_pids,
+        sampling_data = {
+            "positive_pids": positive_pids.tolist(),
+            "negative_pids": negative_pids.tolist(),
+            "positive_probs": positive_probs.tolist() if positive_probs is not None else None,
+            "negative_probs": negative_probs.tolist() if negative_probs is not None else None,
         }
 
-    def sampling_data_random(self, label: int, idx: int | None = None) -> dict[str, np.ndarray]:
+        if return_missing:
+            sampling_data.update({"missing": n_missing})
+
+        return sampling_data
+
+    def sampling_data_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
         # pids that have the same label
         positive_pids = self.pids_for_label[label]
         # pids that have different label
@@ -205,27 +210,39 @@ class TripleSamplingData:
 
     def triple_sample_from_sampling_data(
         self,
-        positive_pids: np.ndarray,
-        negative_pids: np.ndarray,
-        positive_probs: np.ndarray,
-        negative_probs: np.ndarray,
+        positive_pids: torch.LongTensor,
+        negative_pids: torch.LongTensor,
+        positive_probs: torch.Tensor,
+        negative_probs: torch.Tensor,
         idx: int,
-    ) -> dict[str, Triple]:
+    ) -> dict[str, torch.LongTensor:]:
         triple = sample_triple(positive_pids, negative_pids, positive_probs, negative_probs, idx, self.nway)
         return {"triple": triple}
 
 
 def sample_triple(
-    positive_pids: np.ndarray,
-    negative_pids: np.ndarray,
-    positive_probs: np.ndarray,
-    negative_probs: np.ndarray,
+    positive_pids: torch.LongTensor,
+    negative_pids: torch.LongTensor,
+    positive_probs: torch.Tensor,
+    negative_probs: torch.Tensor,
     idx: int,
     nway: int,
-) -> dict[str, Triple]:
-    sampled_positive = np.random.choice(positive_pids, size=1, p=positive_probs)
-    sampled_negatives = np.random.choice(negative_pids, size=nway - 1, p=negative_probs)
-    return (idx, sampled_positive, *sampled_negatives)
+) -> torch.LongTensor:
+    if positive_probs is not None:
+        positive_indices = positive_probs.multinomial(1)
+    else:
+        positive_indices = torch.randint(positive_pids.size(0), size=(1,))
+
+    if negative_probs is not None:
+        negative_indices = negative_probs.multinomial(nway - 1)
+    else:
+        negative_indices = torch.randint(negative_pids.size(0), size=(1,))
+
+    sampled_positive = positive_pids[positive_indices]
+    sampled_negatives = negative_pids[negative_indices]
+    idx = torch.LongTensor([idx])
+
+    return torch.cat([idx, sampled_positive, sampled_negatives])
 
 
 def normalize_probs(probs: np.ndarray) -> np.ndarray:
@@ -234,4 +251,4 @@ def normalize_probs(probs: np.ndarray) -> np.ndarray:
     if probs.sum() == 0:
         return None
     else:
-        return probs / probs.sum()
+        return probs

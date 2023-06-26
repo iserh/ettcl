@@ -110,8 +110,15 @@ class ColBERTTokenizer:
     def from_pretrained(
         cls, pretrained_model_name_or_path: str | os.PathLike, *init_inputs, **kwargs
     ) -> "ColBERTTokenizer":
-        """Convenience wrapper. Calls init method."""
-        return cls(pretrained_model_name_or_path, *init_inputs, **kwargs)
+        colbert_tokenizer_config_file = os.path.join(pretrained_model_name_or_path, COLBERT_TOKENIZER_CONFIG_FILE)
+        if os.path.exists(colbert_tokenizer_config_file):
+            with open(colbert_tokenizer_config_file, "r", encoding="utf-8") as f:
+                colbert_tokenizer_config = json.load(f)
+        else:
+            colbert_tokenizer_config = {}
+        colbert_tokenizer_config.update(kwargs)
+
+        return cls(pretrained_model_name_or_path, *init_inputs, **colbert_tokenizer_config)
 
     def tokenize(
         self,
@@ -149,7 +156,7 @@ class ColBERTTokenizer:
         return_tensors: str | TensorType | None = None,
         verbose: bool = True,
     ) -> BatchEncoding:
-        if max_length is None:
+        if max_length is None and padding == "max_length":
             max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
 
         return self.tokenizer.pad(

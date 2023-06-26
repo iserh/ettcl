@@ -24,8 +24,7 @@ class ColBERTEncoder(Encoder):
         self.tokenizer = tokenizer
         self.use_gpu = False
 
-        self.doc_collator = DataCollatorWithPadding(tokenizer, padding="longest", max_length=tokenizer.doc_maxlen)
-        self.query_collator = DataCollatorWithPadding(tokenizer, padding="longest", max_length=tokenizer.query_maxlen)
+        self.data_collator = DataCollatorWithPadding(tokenizer)
 
     @property
     def embedding_dim(self) -> int:
@@ -61,7 +60,7 @@ class ColBERTEncoder(Encoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset, reverse_indices = sort_by_length(dataset, lengths)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.doc_collator)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 
         with torch.inference_mode():
             embeddings, masks = [], []
@@ -111,7 +110,7 @@ class ColBERTEncoder(Encoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset, reverse_indices = sort_by_length(dataset, lengths)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.query_collator)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 
         with torch.inference_mode():
             embeddings = []
