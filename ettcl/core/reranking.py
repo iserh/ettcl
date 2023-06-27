@@ -32,7 +32,9 @@ class RerankTrainerConfig:
     dev_split_size: int | float = 0.2
     do_eval: bool = False
     eval_ks: tuple[int] = (1,)
-    resample_interval: int = 1
+    resample_interval: int | None = None
+    eval_interval: int | None = None
+    dev_eval_interval: int | None = None
     searcher_sampling_k: int | None = None
     subsample_train: int | None = None
     subsample_eval: int | None = None
@@ -73,6 +75,7 @@ class RerankTrainer:
             self.eval_dataset = eval_dataset.remove_columns(self.config.remove_columns)
             self.eval_dataset = self.eval_dataset.rename_columns({config.text_column: "text", config.label_column: "label"})
         else:
+            logger.warning("No evaluation dataset provided, disabling final evaluation.")
             self.config.do_eval = False
         self.encoder = encoder
         self.indexer = indexer
@@ -99,6 +102,9 @@ class RerankTrainer:
         training_args = self.training_args
         num_train_epochs = training_args.num_train_epochs
         do_searched_sampling = self.config.sampling_method == "searched"
+        resample_interval = self.config.resample_interval or num_train_epochs
+        dev_eval_interval = self.config.dev_eval_interval if self.config.do_dev_eval else None
+        eval_interval = self.config.eval_interval if self.config.do_eval else None
 
         if self.config.do_dev_eval:
             train_dataset, dev_dataset = self.train_dev_split()
@@ -111,27 +117,38 @@ class RerankTrainer:
         self.init_wandb()
 
         epoch, global_step = 0, 0
+        next_resample = 0
+        next_dev_eval = dev_eval_interval or num_train_epochs
+        next_eval = eval_interval or num_train_epochs
         while epoch < num_train_epochs:
             logger.info(f"\n\n## EPOCH {epoch}\n")
 
-            train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
-            if do_searched_sampling or self.config.do_dev_eval:
+            if epoch == next_resample:
+                train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
+            if epoch in [next_dev_eval, next_eval] or (epoch == next_resample and do_searched_sampling):
                 self.index_path = self.build_index(train_subsample, step=global_step)
-            if self.config.do_dev_eval:
-                self.evaluate(train_subsample, dev_dataset, prefix="dev")
-            if do_searched_sampling:
-                train_subsample = self.search_dataset(
-                    train_subsample, self.searcher_sampling, self.config.searcher_sampling_k
-                )
+            if epoch == next_dev_eval:
+                next_dev_eval = epoch + dev_eval_interval
+                self.evaluate(train_subsample, dev_dataset, epoch, prefix="dev")
+            if epoch == next_eval:
+                next_eval = epoch + eval_interval
+                eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
+                self.evaluate(train_dataset, eval_dataset, epoch, prefix="test")
 
-            train_subsample = self.build_sampling_data(train_subsample)
-            train_subsample = self.tokenize(train_subsample)
-            train_subsample = TripleSamplerDataset(train_subsample, self.config.nway)
+            if epoch == next_resample:
+                next_resample = epoch + resample_interval
+                if do_searched_sampling:
+                    train_subsample = self.search_dataset(
+                        train_subsample, self.searcher_sampling, self.config.searcher_sampling_k
+                    )
+                train_subsample = self.build_sampling_data(train_subsample)
+                train_subsample = self.tokenize(train_subsample)
+                train_subsample = TripleSamplerDataset(train_subsample, self.config.nway)
 
             if self.config.freeze_base_model:
                 self.model.freeze_base_model()
 
-            training_args.num_train_epochs = min(epoch + self.config.resample_interval, num_train_epochs)
+            training_args.num_train_epochs = min(next_resample, next_dev_eval, next_eval)
             trainer = self.trainer_cls(
                 model=self.model,
                 tokenizer=self.tokenizer,
@@ -149,10 +166,10 @@ class RerankTrainer:
         if self.config.do_eval or self.config.do_dev_eval:
             self.index_path = self.build_index(train_dataset, step=global_step)
         if self.config.do_dev_eval:
-            self.evaluate(train_dataset, dev_dataset, prefix="dev")
+            self.evaluate(train_dataset, dev_dataset, epoch, prefix="dev")
         if self.config.do_eval:
             eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-            self.evaluate(train_dataset, eval_dataset, prefix="test")
+            self.evaluate(train_dataset, eval_dataset, epoch, prefix="test")
 
     def tokenize(self, dataset: Dataset) -> Dataset:
         logger.info("tokenize")
@@ -169,6 +186,7 @@ class RerankTrainer:
         dataset: Dataset,
     ):
         logger.info("build sampling data")
+        dataset.set_format(None)
         sampling_data_builder = TripleSamplingDataBuilder(
             dataset["label"],
             sampling_method=self.config.sampling_method,
@@ -201,7 +219,7 @@ class RerankTrainer:
         logger.info("search dataset")
         searcher.index_path = self.index_path
         dataset.set_format(None)
-        return dataset.map(
+        dataset = dataset.map(
             run_multiprocessed(searcher.search),
             input_columns=self.config.text_column,
             fn_kwargs={"k": k},
@@ -210,6 +228,15 @@ class RerankTrainer:
             with_rank=True,
             desc="Searching",
         )
+
+        # log some statistics about how many matches were found
+        dataset.set_format("numpy")
+        dataset = dataset.map(lambda pids: {"len_": len(pids)}, input_columns="match_pids")
+        avg_matches = dataset["len_"].mean()
+        dataset.remove_columns("len_")
+        logger.info(f"average #matches: {avg_matches}")
+
+        return dataset
 
     def train_dev_split(self) -> tuple[Dataset, Dataset]:
         train_dev_dataset = self.train_dataset.train_test_split(
@@ -245,7 +272,7 @@ class RerankTrainer:
         if hasattr(self, "run"):
             self.run.log(values)
 
-    def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, prefix: str = "") -> None:
+    def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, prefix: str = "") -> None:
         logger.info(f"evaluate {prefix}")
         max_k = max(self.config.eval_ks)
 

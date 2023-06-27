@@ -1,7 +1,8 @@
 from time import perf_counter
-
+from logging import getLogger
 import torch
 
+logger = getLogger(__name__)
 Devices = int | bool | list[int] | list[str] | None
 
 
@@ -44,4 +45,4 @@ class catchtime:
         self.time = perf_counter() - self.time
         if self.output_to_console:
             self.readout = f"{self.desc}: {self.time:.3f} seconds"
-            print(self.readout)
+            logger.info(self.readout)

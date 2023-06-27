@@ -14,12 +14,16 @@ from ettcl.indexing.colbert.collection_indexer import index
 from ettcl.indexing.colbert.settings import _IndexerSettings
 from ettcl.indexing.indexer import Indexer, IndexPath
 from ettcl.utils.utils import Devices, to_gpu_list
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 @dataclass
 class ColBERTIndexerConfig:
     nbits: int = 2
     kmeans_niters: int = 4
+    num_partitions_fac: int = 16
 
 
 class ColBERTIndexer(Indexer):
@@ -59,7 +63,7 @@ class ColBERTIndexer(Indexer):
                 nbits=self.config.nbits,
                 dim=self.encoder.embedding_dim,
                 bsize=512,
-                partitions=None,
+                num_partitions_fac=self.config.num_partitions_fac,
             )
 
             output_path.mkdir(parents=True, exist_ok=True)
@@ -100,8 +104,8 @@ class ColBERTIndexer(Indexer):
                 deleted.append(filename)
 
         if len(deleted):
-            print(f"#> Will delete {len(deleted)} files already at {index_path}")
-            time.sleep(10)
+            logger.warning(f"#> Will delete {len(deleted)} files already at {index_path}")
+            # time.sleep(10)
 
             for filename in deleted:
                 os.remove(filename)

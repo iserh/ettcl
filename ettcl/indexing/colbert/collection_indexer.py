@@ -28,8 +28,8 @@ class CollectionIndexerWrapper(CollectionIndexer):
 
         self.use_gpu = len(self.config.gpus_) > 0
 
-        if self.config.rank == 0:
-            self.config.help()
+        # if self.config.rank == 0:
+        #     self.config.help()
 
         self.collection = Collection.cast(collection)
         self.encoder = encoder

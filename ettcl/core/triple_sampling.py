@@ -80,7 +80,7 @@ class DataCollatorForTriples(DataCollatorWithPadding):
 
 class ProbabilityType(str, Enum):
     scores = "scores"
-    ranks = "ranks"
+    ranked = "ranked"
     uniform = "uniform"
 
 
@@ -157,7 +157,7 @@ class TripleSamplingDataBuilder:
             #     f"No passage with the same label ({label=}) was matched in the retrieval process. "
             #     f"Using a random sample of {self.fill_missing=} instead."
             # )
-            positive_pids = np.random.choice(self.pids_for_label[label], size=self.fill_missing)
+            positive_pids = np.random.choice(self.pids_for_label[label], size=self.fill_missing // 2)
             positive_scores = None
 
         missing_neg = max(0, self.fill_missing - len(negative_pids))
@@ -185,7 +185,7 @@ class TripleSamplingDataBuilder:
                 # use similarity scores as probabilities
                 positive_probs = positive_scores
                 negative_probs = negative_scores
-            case "ranks":
+            case "ranked":
                 # use ranking as probabilities
                 positive_probs = (
                     np.arange(len(positive_pids), 0, -1).astype(np.float32) if len(positive_pids) > 1 else None
@@ -196,6 +196,8 @@ class TripleSamplingDataBuilder:
             case "uniform":
                 positive_probs = None
                 negative_probs = None
+            case _:
+                raise NotImplementedError(self.probability_type)
 
         positive_probs = normalize_probs(positive_probs) if positive_probs is not None else None
         negative_probs = normalize_probs(negative_probs) if negative_probs is not None else None
