@@ -146,13 +146,6 @@ class RerankTrainer:
             global_step = trainer.state.global_step
             epoch = trainer.state.epoch
 
-            train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
-
-            if do_searched_sampling or self.config.do_dev_eval:
-                index = self.build_index(train_subsample, step=global_step)
-            if do_searched_sampling:
-                self.searcher_sampling.index = index
-
         if self.config.do_eval or self.config.do_dev_eval:
             self.index_path = self.build_index(train_dataset, step=global_step)
         if self.config.do_dev_eval:

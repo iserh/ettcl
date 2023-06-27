@@ -254,7 +254,7 @@ def sample_triple(
     if negative_probs is not None:
         negative_indices = negative_probs.multinomial(nway - 1)
     else:
-        negative_indices = torch.randint(negative_pids.size(0), size=(1,))
+        negative_indices = torch.randint(negative_pids.size(0), size=(nway - 1,))
 
     sampled_positive = positive_pids[positive_indices]
     sampled_negatives = negative_pids[negative_indices]
