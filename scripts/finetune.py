@@ -10,6 +10,8 @@ from ettcl.encoding import ColBERTEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.modeling import ColBERTConfig, ColBERTModel, ColBERTTrainer, ColBERTTokenizer
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
+import shutil
+from datetime import datetime
 
 
 def main(params: dict) -> None:
@@ -17,7 +19,11 @@ def main(params: dict) -> None:
         "training",
         os.path.basename(params["dataset"]),
         os.path.basename(params["model"]),
+        datetime.now().isoformat(),
     )
+
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
 
     model_config = ColBERTConfig.from_pretrained(params["model"], **params["model_config"])
     model = ColBERTModel.from_pretrained(params["model"], config=model_config)

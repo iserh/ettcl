@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from logging import getLogger
+from pathlib import Path
 
 import torch
 try:
@@ -127,13 +128,14 @@ class RerankTrainer:
                 train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
             if epoch in [next_dev_eval, next_eval] or (epoch == next_resample and do_searched_sampling):
                 self.index_path = self.build_index(train_subsample, step=global_step)
+
             if epoch == next_dev_eval:
                 next_dev_eval = epoch + dev_eval_interval
-                self.evaluate(train_subsample, dev_dataset, epoch, prefix="dev")
+                self.evaluate(train_subsample, dev_dataset, epoch, global_step, prefix="dev")
             if epoch == next_eval:
                 next_eval = epoch + eval_interval
                 eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-                self.evaluate(train_dataset, eval_dataset, epoch, prefix="test")
+                self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
 
             if epoch == next_resample:
                 next_resample = epoch + resample_interval
@@ -141,9 +143,9 @@ class RerankTrainer:
                     train_subsample = self.search_dataset(
                         train_subsample, self.searcher_sampling, self.config.searcher_sampling_k
                     )
-                train_subsample = self.build_sampling_data(train_subsample)
-                train_subsample = self.tokenize(train_subsample)
-                train_subsample = TripleSamplerDataset(train_subsample, self.config.nway)
+                sampling_dataset = self.build_sampling_data(train_subsample)
+                sampling_dataset = self.tokenize(sampling_dataset)
+                sampling_dataset = TripleSamplerDataset(sampling_dataset, self.config.nway)
 
             if self.config.freeze_base_model:
                 self.model.freeze_base_model()
@@ -153,7 +155,7 @@ class RerankTrainer:
                 model=self.model,
                 tokenizer=self.tokenizer,
                 args=training_args,
-                train_dataset=train_subsample,
+                train_dataset=sampling_dataset,
                 data_collator=self.data_collator,
             )
 
@@ -161,15 +163,15 @@ class RerankTrainer:
             trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
 
             global_step = trainer.state.global_step
-            epoch = trainer.state.epoch
+            epoch = int(trainer.state.epoch)
 
         if self.config.do_eval or self.config.do_dev_eval:
             self.index_path = self.build_index(train_dataset, step=global_step)
         if self.config.do_dev_eval:
-            self.evaluate(train_dataset, dev_dataset, epoch, prefix="dev")
+            self.evaluate(train_dataset, dev_dataset, epoch, global_step, prefix="dev")
         if self.config.do_eval:
             eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-            self.evaluate(train_dataset, eval_dataset, epoch, prefix="test")
+            self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
 
     def tokenize(self, dataset: Dataset) -> Dataset:
         logger.info("tokenize")
@@ -260,9 +262,11 @@ class RerankTrainer:
 
     def init_wandb(self) -> None:
         logger.info("init wandb")
+        output_dir = Path(self.training_args.output_dir)
+        output_dir.mkdir(parents=True)
         try:
             self.run = wandb.init(
-                dir=self.training_args.output_dir,
+                dir=output_dir,
                 config=self.run_config,
             )
         except ModuleNotFoundError:
@@ -272,7 +276,7 @@ class RerankTrainer:
         if hasattr(self, "run"):
             self.run.log(values)
 
-    def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, prefix: str = "") -> None:
+    def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, step: int, prefix: str = "") -> None:
         logger.info(f"evaluate {prefix}")
         max_k = max(self.config.eval_ks)
 
@@ -289,7 +293,7 @@ class RerankTrainer:
         match_labels = train_dataset["label"][match_pids.tolist()]
 
         logger.info(f"compute metrics {prefix}")
-        metrics = {}
+        metrics = {"train/epoch": epoch, "train/step": step}
         for k in self.config.eval_ks:
             knn = match_labels[:, :k]
             y_pred = torch.mode(knn)[0]
