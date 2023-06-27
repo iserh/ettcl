@@ -80,7 +80,7 @@ class DataCollatorForTriples(DataCollatorWithPadding):
 
 class ProbabilityType(str, Enum):
     scores = "scores"
-    ranked = "ranked"
+    ranks = "ranks"
     uniform = "uniform"
 
 
@@ -185,7 +185,7 @@ class TripleSamplingDataBuilder:
                 # use similarity scores as probabilities
                 positive_probs = positive_scores
                 negative_probs = negative_scores
-            case "ranked":
+            case "ranks":
                 # use ranking as probabilities
                 positive_probs = (
                     np.arange(len(positive_pids), 0, -1).astype(np.float32) if len(positive_pids) > 1 else None
