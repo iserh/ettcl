@@ -179,7 +179,7 @@ class RerankTrainer:
             trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
 
             global_step = trainer.state.global_step
-            epoch = int(trainer.state.epoch)
+            epoch = int(round(trainer.state.epoch))
 
         if self.config.do_eval or self.config.do_dev_eval:
             self.index_path = self.build_index(train_dataset, step=global_step)

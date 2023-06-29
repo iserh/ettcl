@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from logging import getLogger
@@ -7,7 +8,7 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel, BertModel
+from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 from transformers.models.auto.auto_factory import _get_model_class
 
@@ -34,7 +35,6 @@ class ColbertRerankingOutput(ModelOutput):
 
 
 class ColBERTPreTrainedModel(PreTrainedModel):
-
     config_class = ColBERTConfig
     base_model_prefix = "colbert"
 
@@ -70,7 +70,6 @@ class ColBERTPreTrainedModel(PreTrainedModel):
 
 
 class ColBERTModel(ColBERTPreTrainedModel):
-
     def __init__(
         self,
         config: ColBERTConfig,
@@ -160,7 +159,6 @@ class ColBERTModel(ColBERTPreTrainedModel):
 
 
 class ColBERTForReranking(ColBERTPreTrainedModel):
-
     _keys_to_ignore_on_load_missing = set(["default_labels"])
     _keys_to_ignore_on_save = set(["default_labels"])
 
@@ -187,7 +185,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
 
         # input has shape (BATCH, nway+1, input_length)
         batch_size = input_ids.shape[0]
-        nway = input_ids.shape[1] - 1
+        nway = input_ids.shape[1]
         input_length = input_ids.shape[2]
 
         outputs = self.colbert(
@@ -200,7 +198,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         # outputs[0] holds normalized output, shape (BATCH * (nway+1), input_length, embedding_dim)
         embedding_dim = outputs[0].shape[-1]
         # reshape to (BATCH, nway+1, input_length, embedding_dim)
-        sequence_output = outputs[0].view(-1, nway + 1, input_length, embedding_dim)
+        sequence_output = outputs[0].view(-1, nway, input_length, embedding_dim)
         # select queries
         Q = sequence_output[:, 0]
         # select nway documents, view as (BATCH * nway, input_length, embedding_dim)
@@ -208,12 +206,12 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         D_mask = attention_mask[:, 1:].reshape(-1, *attention_mask.shape[2:])
 
         # Repeat each query encoding for every corresponding document, shape (BATCH * nway, input_length, embedding_dim)
-        Q_duplicated = Q.repeat_interleave(nway, dim=0).contiguous()
+        Q_duplicated = Q.repeat_interleave(nway - 1, dim=0).contiguous()
 
         # compute similarity scores between all embeddings using batched matrix-multiplication
         unreduced_scores = colbert_score(Q_duplicated, D)
         # reduce these scores via `MaxSim`
-        scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway)
+        scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway - 1)
 
         if labels is None:
             # default labels <=> 0 for whole batch, which is selecting the first document as target for cross_entropy_loss
@@ -226,8 +224,8 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         else:
             # if target_scores are provided (e.g. from a cross-encoder) knowledge is distilled by computing kl divergence of the ranking distributions
             assert labels.shape == torch.Size(
-                [batch_size, nway]
-            ), f"Expected label scores to of shape {torch.Size([batch_size, nway])} (bsize, nway), got {labels.shape}"
+                [batch_size, nway - 1]
+            ), f"Expected label scores to of shape {torch.Size([batch_size, nway - 1])} (bsize, nway-1), got {labels.shape}"
 
             target_scores = labels * self.config.distillation_alpha
             target_scores = torch.nn.functional.log_softmax(target_scores, dim=-1)

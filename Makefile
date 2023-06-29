@@ -29,5 +29,10 @@ clean:
 	find . -type d -name *.egg-info -prune -exec rm -rf {} \;
 
 finetune:
+	./scripts/finetune.py configs/finetune_config.yml
+
+finetune-debug:
 	TRANSFORMERS_VERBOSITY=info \
+	WANDB_MODE=disabled \
+	WANDB_DISABLED=true \
 	./scripts/finetune.py configs/finetune_config.yml
