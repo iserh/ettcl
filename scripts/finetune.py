@@ -1,58 +1,66 @@
 #!/usr/bin/env python
 import os
+import shutil
 from dataclasses import asdict
+from datetime import datetime
 
 from datasets import load_dataset
-from transformers import TrainingArguments
+from transformers import Trainer, TrainingArguments
 
 from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
 from ettcl.encoding import ColBERTEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
-from ettcl.modeling import ColBERTConfig, ColBERTModel, ColBERTTrainer, ColBERTTokenizer
+from ettcl.logging import configure_logger
+from ettcl.modeling import ColBERTConfig, ColBERTForReranking, ColBERTTokenizer
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
-import shutil
-from datetime import datetime
+from ettcl.utils import seed_everything
 
 
-def main(params: dict) -> None:
+def main(params: dict, log_level: str | int = "INFO") -> None:
+    configure_logger(log_level)
+
+    seed = params["seed"]["value"] if "seed" in params.keys() else 12345
+    seed_everything(seed)
+
     output_dir = os.path.join(
         "training",
-        os.path.basename(params["dataset"]),
-        os.path.basename(params["model"]),
+        os.path.basename(params["dataset"]["value"]),
+        os.path.basename(params["model"]["value"]),
         datetime.now().isoformat(),
     )
 
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
 
-    model_config = ColBERTConfig.from_pretrained(params["model"], **params["model_config"])
-    model = ColBERTModel.from_pretrained(params["model"], config=model_config)
-    tokenizer = ColBERTTokenizer.from_pretrained(params["model"], **params["tokenizer"])
-    encoder = ColBERTEncoder(model, tokenizer)
+    model_config = ColBERTConfig.from_pretrained(params["model"]["value"], **params["model_config"]["value"])
+    model = ColBERTForReranking.from_pretrained(params["model"]["value"], config=model_config)
+    tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
+    encoder = ColBERTEncoder(model.colbert, tokenizer)
 
-    indexer_config = ColBERTIndexerConfig(**params["indexer"])
+    indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
     indexer = ColBERTIndexer(encoder, indexer_config)
 
-    if params.get("searcher_eval", None) is not None:
-        searcher_eval_config = ColBERTSearcherConfig(**params["searcher_eval"])
+    if "searcher_eval" in params.keys():
+        searcher_eval_config = ColBERTSearcherConfig(**params["searcher_eval"]["value"])
         searcher_eval = ColBERTSearcher(None, encoder, searcher_eval_config)
     else:
         searcher_eval = None
 
-    if params.get("searcher_sampling", None) is not None:
-        searcher_sampling_config = ColBERTSearcherConfig(**params["searcher_sampling"])
+    if "searcher_sampling" in params.keys():
+        searcher_sampling_config = ColBERTSearcherConfig(**params["searcher_sampling"]["value"])
         searcher_sampling = ColBERTSearcher(None, encoder, searcher_eval_config)
     else:
         searcher_sampling = None
 
-    training_args = TrainingArguments(output_dir=output_dir, **params["training"])
-    config = RerankTrainerConfig(**params["config"])
+    params["training"]["value"].pop("output_dir", None)
+    training_args = TrainingArguments(output_dir=output_dir, **params["training"]["value"])
+    config = RerankTrainerConfig(**params["config"]["value"])
 
-    train_dataset = load_dataset(params["dataset"], split="train")
-    test_dataset = load_dataset(params["dataset"], split="test") if config.do_eval else None
+    train_dataset = load_dataset(params["dataset"]["value"], split="train")
+    test_dataset = load_dataset(params["dataset"]["value"], split="test") if config.do_eval else None
 
     trainer = RerankTrainer(
-        trainer_cls=ColBERTTrainer,
+        trainer_cls=Trainer,
         model=model,
         encoder=encoder,
         tokenizer=tokenizer,
@@ -66,12 +74,13 @@ def main(params: dict) -> None:
     )
 
     trainer.run_config = {
-        "dataset": params["dataset"],
-        "model": params["model"],
+        "dataset": params["dataset"]["value"],
+        "model": params["model"]["value"],
+        "seed": seed,
         "model_config": model_config.to_dict(),
-        "tokenizer": tokenizer.to_dict(),
+        "tokenizer": tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
-        "training": asdict(training_args),
+        "training": training_args.to_dict(),
         "config": asdict(config),
     }
 
@@ -85,12 +94,16 @@ def main(params: dict) -> None:
 
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+
     import yaml
-    from ettcl.logging import configure_logger
 
-    configure_logger("INFO")
+    parser = ArgumentParser()
+    parser.add_argument("path", type=str, help="Path to the train config yaml file.")
+    parser.add_argument("--log-level", type=str, default="INFO")
+    args = parser.parse_args()
 
-    with open("configs/training_config.yml", "r") as f:
+    with open(args.path, "r") as f:
         params = yaml.load(f, yaml.SafeLoader)
 
-    main(params)
+    main(params, args.log_level)

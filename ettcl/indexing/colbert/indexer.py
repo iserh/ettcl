@@ -2,6 +2,7 @@ import multiprocessing as mp
 import os
 import time
 from dataclasses import dataclass
+from logging import getLogger
 from pathlib import Path
 
 import torch
@@ -14,7 +15,6 @@ from ettcl.indexing.colbert.collection_indexer import index
 from ettcl.indexing.colbert.settings import _IndexerSettings
 from ettcl.indexing.indexer import Indexer, IndexPath
 from ettcl.utils.utils import Devices, to_gpu_list
-from logging import getLogger
 
 logger = getLogger(__name__)
 

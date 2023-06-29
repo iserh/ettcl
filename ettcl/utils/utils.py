@@ -1,9 +1,19 @@
-from time import perf_counter
+import random
 from logging import getLogger
+from time import perf_counter
+
+import numpy as np
 import torch
 
 logger = getLogger(__name__)
 Devices = int | bool | list[int] | list[str] | None
+
+
+def seed_everything(seed: int = 12345) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 def to_gpu_list(gpus: Devices) -> list[int]:

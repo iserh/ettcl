@@ -9,6 +9,9 @@ help:
 	@echo "make lint"
 	@echo "    use flake8 to lint source code"
 
+install:
+	pip install -r requirements.txt
+
 test:
 	pytest
 
@@ -24,3 +27,7 @@ clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} \;
 	find . -type d -name .ipynb_checkpoints -prune -exec rm -rf {} \;
 	find . -type d -name *.egg-info -prune -exec rm -rf {} \;
+
+finetune:
+	TRANSFORMERS_VERBOSITY=info \
+	./scripts/finetune.py configs/finetune_config.yml

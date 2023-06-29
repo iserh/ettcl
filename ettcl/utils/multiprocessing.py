@@ -1,10 +1,12 @@
+import logging
 import os
 from typing import Callable
 
 import multiprocess as mp
 import torch
+
 from ettcl.logging.logger import configure_logger
-import logging
+from ettcl.utils.utils import seed_everything
 
 try:
     mp.set_start_method("spawn")
@@ -26,6 +28,7 @@ def run_multiprocessed(function: Callable) -> Callable:
             device = rank % torch.cuda.device_count()
 
         with torch.cuda.device(device):
+            seed_everything()
             return function(*args, rank=rank, **kwargs)
 
     return setup_process

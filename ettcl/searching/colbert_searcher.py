@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from logging import getLogger
 
 import torch
 from colbert.infra.config import BaseConfig, RunConfig, RunSettings, SearchSettings
@@ -10,7 +11,6 @@ from ettcl.encoding.encoder import Encoder
 from ettcl.indexing.indexer import IndexPath
 from ettcl.logging.tqdm import trange
 from ettcl.searching.searcher import BatchResult, Searcher, TensorLike, TensorType, TextQueries
-from logging import getLogger
 
 logger = getLogger(__name__)
 
@@ -20,11 +20,15 @@ class ColBERTSearcherConfig:
     ncells: int | None = None
     centroid_score_threshold: float | None = None
     ndocs: int | None = None
+    ideal_batch_size: int = 10_000
+    use_full_centroid_approx: bool = True
 
 
 @dataclass
 class _SearcherSettings(RunSettings, SearchSettings, BaseConfig):
     interaction: str = "colbert"
+    ideal_batch_size: int = 10_000
+    use_full_centroid_approx: bool = True
 
 
 class ColBERTSearcher(Searcher):
@@ -89,6 +93,8 @@ class ColBERTSearcher(Searcher):
                 ncells=self.config.ncells,
                 centroid_score_threshold=self.config.centroid_score_threshold,
                 ndocs=self.config.ndocs,
+                ideal_batch_size=self.config.ideal_batch_size,
+                use_full_centroid_approx=self.config.use_full_centroid_approx,
             )
 
             logger.debug(f"{rank}[{self.ranker.device}]> Encoding ...")
@@ -139,7 +145,7 @@ class ColBERTSearcher(Searcher):
             if args.centroid_score_threshold is None:
                 args.configure(centroid_score_threshold=0.4)
             if args.ndocs is None:
-                args.configure(ndocs=max(k * 4, 4096))
+                args.configure(ndocs=max(k * 2, 2048))
 
         pids, scores = self.ranker.rank(args, Q.unsqueeze(0))
 

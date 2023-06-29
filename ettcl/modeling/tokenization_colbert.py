@@ -1,8 +1,10 @@
-import json
+from __future__ import annotations
+
 import os
 from enum import Enum
 
-from transformers import AutoTokenizer, logging
+import wrapt
+from transformers import AutoTokenizer, PreTrainedTokenizerBase, logging
 from transformers.tokenization_utils import (
     BatchEncoding,
     PaddingStrategy,
@@ -20,7 +22,7 @@ class TokenizerMode(str, Enum):
     doc = "doc"
 
 
-class ColBERTTokenizer:
+class ColBERTTokenizer(wrapt.ObjectProxy):
     special_tokens_pretty = {
         "query": "[Q]",
         "doc": "[D]",
@@ -28,16 +30,28 @@ class ColBERTTokenizer:
 
     def __init__(
         self,
-        pretrained_model_name_or_path: str | os.PathLike,
+        tokenizer: PreTrainedTokenizerBase,
         query_token: str | None = "[unused0]",
         doc_token: str | None = "[unused1]",
-        query_augmentation: bool = False,
-        attend_to_mask_tokens: bool = False,
         query_maxlen: int = 512,
         doc_maxlen: int = 512,
-        *args,
+        query_augmentation: bool = False,
+        attend_to_mask_tokens: bool = False,
+        *inputs,
         **kwargs,
     ) -> None:
+        super().__init__(tokenizer)
+        self.init_kwargs.update(
+            dict(
+                query_token=query_token,
+                doc_token=doc_token,
+                query_maxlen=query_maxlen,
+                doc_maxlen=doc_maxlen,
+                query_augmentation=query_augmentation,
+                attend_to_mask_tokens=attend_to_mask_tokens,
+            )
+        )
+
         self.query_token = query_token
         self.doc_token = doc_token
         self.query_maxlen = query_maxlen
@@ -48,10 +62,8 @@ class ColBERTTokenizer:
         if self.attend_to_mask_tokens and not self.query_augmentation:
             logger.warning("With `query_augmentation` disabled, `attend_to_mask_tokens` (set to True) will be ignored.")
 
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, *args, **kwargs)
-
         special_tokens = [token for token in [self.query_token, self.doc_token] if token is not None]
-        num_add_tokens = self.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+        num_add_tokens = self.__wrapped__.add_special_tokens({"additional_special_tokens": special_tokens})
         if num_add_tokens > 0:
             logger.warning(
                 f"Added special tokens {special_tokens} to the tokenizer "
@@ -59,53 +71,12 @@ class ColBERTTokenizer:
                 "to match the models embedding matrix."
             )
 
-    def to_dict(self) -> dict:
-        return {
-            "query_token": self.query_token,
-            "doc_token": self.doc_token,
-            "query_maxlen": self.query_maxlen,
-            "doc_maxlen": self.doc_maxlen,
-            "query_augmentation": self.query_augmentation,
-            "attend_to_mask_tokens": self.attend_to_mask_tokens,
-        }
-
-    def save_pretrained(
-        self,
-        save_directory: str | os.PathLike,
-        legacy_format: bool | None = None,
-        filename_prefix: str | None = None,
-        push_to_hub: bool = False,
-        **kwargs,
-    ) -> tuple[str]:
-        files_saved = self.tokenizer.save_pretrained(
-            save_directory, legacy_format, filename_prefix, push_to_hub, **kwargs
-        )
-
-        colbert_tokenizer_config = self.to_dict()
-        colbert_tokenizer_config_file = os.path.join(
-            save_directory, (filename_prefix + "-" if filename_prefix else "") + COLBERT_TOKENIZER_CONFIG_FILE
-        )
-
-        with open(colbert_tokenizer_config_file, "w", encoding="utf-8") as f:
-            out_str = json.dumps(colbert_tokenizer_config, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-            f.write(out_str)
-        logger.info(f"colbert tokenizer config file saved in {colbert_tokenizer_config_file}")
-
-        return (colbert_tokenizer_config_file, *files_saved)
-
     @classmethod
     def from_pretrained(
         cls, pretrained_model_name_or_path: str | os.PathLike, *init_inputs, **kwargs
-    ) -> "ColBERTTokenizer":
-        colbert_tokenizer_config_file = os.path.join(pretrained_model_name_or_path, COLBERT_TOKENIZER_CONFIG_FILE)
-        if os.path.exists(colbert_tokenizer_config_file):
-            with open(colbert_tokenizer_config_file, "r", encoding="utf-8") as f:
-                colbert_tokenizer_config = json.load(f)
-        else:
-            colbert_tokenizer_config = {}
-        colbert_tokenizer_config.update(kwargs)
-
-        return cls(pretrained_model_name_or_path, *init_inputs, **colbert_tokenizer_config)
+    ) -> ColBERTTokenizer | PreTrainedTokenizerBase:
+        tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, *init_inputs, **kwargs)
+        return cls(tokenizer, *init_inputs, **kwargs)
 
     def tokenize(
         self,
@@ -119,16 +90,16 @@ class ColBERTTokenizer:
         special_token = special_token or ""
 
         batched = not isinstance(text, str)
-        text = [text] if batched else text
+        text = [text] if not batched else text
 
         tokens = [
-            self.tokenizer.tokenize(special_token + s, add_special_tokens=add_special_tokens, **kwargs) for s in text
+            self.__wrapped__.tokenize(special_token + s, add_special_tokens=add_special_tokens, **kwargs) for s in text
         ]
 
         if pretty:
             special_token_pretty = self.special_tokens_pretty[mode]
             for t in tokens:
-                t[1] == special_token_pretty
+                t[1] = special_token_pretty
 
         return tokens if batched else tokens[0]
 
@@ -146,7 +117,7 @@ class ColBERTTokenizer:
         if max_length is None and padding == "max_length":
             max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
 
-        return self.tokenizer.pad(
+        return self.__wrapped__.pad(
             encoded_inputs=encoded_inputs,
             padding=padding,
             max_length=max_length,
@@ -178,7 +149,7 @@ class ColBERTTokenizer:
         if max_length is None:
             max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
 
-        encoding = self.tokenizer(
+        encoding = self.__wrapped__(
             text,
             add_special_tokens=add_special_tokens,
             padding=padding,
@@ -195,3 +166,12 @@ class ColBERTTokenizer:
                 encoding["attention_mask"][input_ids == self.tokenizer.mask_token_id]
 
         return encoding
+
+    # for pickling (ObjectProxy does not support this out of the box)
+    def __reduce_ex__(self, protocol_version):
+        """Pickle reduce method"""
+        return (self._unpickle, (self.__wrapped__, self.init_kwargs))
+
+    @classmethod
+    def _unpickle(cls, tokenizer: PreTrainedTokenizerBase, init_kwargs: dict) -> ColBERTTokenizer:
+        return cls(tokenizer, **init_kwargs)
