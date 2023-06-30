@@ -292,6 +292,7 @@ class RerankTrainer:
             with_indices=True,
             remove_columns=sampling_data_builder.input_columns,
             desc="Sampling",
+            load_from_cache_file=False,
         )
 
         if sampling_data_builder.return_missing:
@@ -338,7 +339,13 @@ class RerankTrainer:
             self.run = wandb.init(
                 dir=output_dir,
                 config=self.run_config,
-                save_code=True,
+            )
+            self.run.log_code(
+                ".",
+                lambda path: path.endswith(".py")
+                or path.endswith(".cpp")
+                or path.endswith(".cu")
+                or path.endswith(".yml"),
             )
         except ModuleNotFoundError:
             pass

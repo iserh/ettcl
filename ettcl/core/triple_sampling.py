@@ -86,6 +86,7 @@ class ProbabilityType(str, Enum):
 
 class SamplingMethod(str, Enum):
     random = "random"
+    class_wise_random = "class_wise_random"
     searched = "searched"
 
 
@@ -113,6 +114,11 @@ class TripleSamplingDataBuilder:
         self.sample_triples = sample_triples
         # compute unique labels
         self.unique_labels = np.unique(passage_labels)
+        self.num_labels = len(self.unique_labels)
+
+        if self.sampling_method == SamplingMethod.class_wise_random:
+            assert (nway - 2) % (self.num_labels - 1) == 0, "nway must be 2 + n*(num_labels-1)"
+
         # for each class holds pids that have that class assigned as label
         self.pids_for_label = {l: np.where(passage_labels == l)[0] for l in self.unique_labels}
         self.scaler = MinMaxScaler()
@@ -121,6 +127,8 @@ class TripleSamplingDataBuilder:
         match self.sampling_method:
             case SamplingMethod.random:
                 sampling_data = self.sampling_data_random(*args, **kwargs)
+            case SamplingMethod.class_wise_random:
+                sampling_data = self.sampling_data_cw_random(*args, **kwargs)
             case SamplingMethod.searched:
                 sampling_data = self.sampling_data_from_matches(*args, **kwargs)
             case _:
@@ -135,6 +143,8 @@ class TripleSamplingDataBuilder:
     def input_columns(self) -> list[str]:
         match self.sampling_method:
             case SamplingMethod.random:
+                return ["label"]
+            case SamplingMethod.class_wise_random:
                 return ["label"]
             case SamplingMethod.searched:
                 return ["match_pids", "match_scores", "label"]
@@ -237,6 +247,18 @@ class TripleSamplingDataBuilder:
             "negative_probs": None,
         }
 
+    def sampling_data_cw_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
+        n = (self.nway - 2) // (self.num_labels)
+        positive_pids = self.pids_for_label[label]
+        negative_pids = np.concatenate([np.random.choice(self.pids_for_label[l], size=n) for l in self.unique_labels])
+
+        return {
+            "positive_pids": positive_pids,
+            "negative_pids": negative_pids,
+            "positive_probs": None,
+            "negative_probs": None,
+        }
+
     def triple_sample_from_sampling_data(
         self,
         positive_pids: torch.LongTensor,
@@ -265,7 +287,7 @@ def sample_triple(
     if negative_probs is not None:
         negative_indices = negative_probs.multinomial(nway - 2)
     else:
-        negative_indices = torch.randint(negative_pids.size(0), size=(nway - 2,))
+        negative_indices = torch.randperm(negative_pids.size(0))[: nway - 2]
 
     sampled_positive = positive_pids[positive_indices]
     sampled_negatives = negative_pids[negative_indices]
