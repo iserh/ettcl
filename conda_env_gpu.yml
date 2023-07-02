@@ -1,0 +1,7 @@
+name: colbert
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - cudatoolkit-dev=11.7.0
+  - gcc=11.3.0

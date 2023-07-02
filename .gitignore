@@ -137,5 +137,10 @@ dmypy.json
 /experiments/
 /output/
 /training/
+/evaluation/
 /configs/
 /wandb/
+/notebooks/**
+!/notebooks/*.ipynb
+/wandb/
+/notebooks/wandb/

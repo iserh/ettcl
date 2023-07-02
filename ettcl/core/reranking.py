@@ -31,6 +31,7 @@ logger = getLogger(__name__)
 
 @dataclass
 class RerankTrainerConfig:
+    project: str | None = None
     do_dev_eval: bool = False
     dev_split_size: int | float = 0.2
     do_eval: bool = False
@@ -146,7 +147,7 @@ class RerankTrainer:
             if epoch == next_eval:
                 next_eval = epoch + eval_interval
                 eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-                self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
+                self.evaluate(train_subsample, eval_dataset, epoch, global_step, prefix="test")
 
             if epoch == next_resample:
                 next_resample = epoch + resample_interval
@@ -198,6 +199,9 @@ class RerankTrainer:
             self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
 
         self.model.cpu()
+        self.finish()
+
+        logger.info(f"See training artifacts at {training_args.output_dir}")
 
     def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, step: int, prefix: str = "") -> None:
         logger.info(f"evaluate {prefix}")
@@ -337,15 +341,17 @@ class RerankTrainer:
         output_dir.mkdir(parents=True)
         try:
             self.run = wandb.init(
+                project=self.config.project,
                 dir=output_dir,
                 config=self.run_config,
+                save_code=True,
             )
             self.run.log_code(
                 ".",
-                lambda path: path.endswith(".py")
-                or path.endswith(".cpp")
-                or path.endswith(".cu")
-                or path.endswith(".yml"),
+                include_fn=lambda path: path.endswith(".py")
+                                        or path.endswith(".cpp")
+                                        or path.endswith(".cu")
+                                        or path.endswith(".yml"),
             )
         except ModuleNotFoundError:
             pass

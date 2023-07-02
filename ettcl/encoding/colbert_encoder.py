@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import torch
 from datasets import Dataset
 from transformers import DataCollatorWithPadding
 
-from ettcl.encoding.encoder import Encoder
+from ettcl.encoding.encoder import MultiVectorEncoder, TEncoder
 from ettcl.logging.tqdm import tqdm
 from ettcl.modeling.modeling_colbert import ColBERTModel
 from ettcl.modeling.tokenization_colbert import ColBERTTokenizer
@@ -17,7 +19,7 @@ def sort_by_length(dataset: Dataset, lengths: list[int]) -> tuple[Dataset, torch
     return dataset.select(indices), reverse_indices
 
 
-class ColBERTEncoder(Encoder):
+class ColBERTEncoder(MultiVectorEncoder):
     def __init__(self, model: ColBERTModel, tokenizer: ColBERTTokenizer) -> None:
         super().__init__()
         self.model = model
@@ -30,12 +32,12 @@ class ColBERTEncoder(Encoder):
     def embedding_dim(self) -> int:
         return self.model.output_dimensionality
 
-    def cuda(self, device: int | None = None) -> Encoder:
+    def cuda(self: TEncoder, device: int | None = None) -> TEncoder:
         self.model.cuda(device)
         self.use_gpu = True
         return self
 
-    def cpu(self) -> Encoder:
+    def cpu(self: TEncoder) -> TEncoder:
         self.model.cpu()
         self.use_gpu = False
         return self
@@ -43,9 +45,11 @@ class ColBERTEncoder(Encoder):
     def encode_passages(
         self,
         passages: list[str],
+        *,
         batch_size: int = 256,
         to_cpu: bool = True,
         progress_bar: bool = True,
+        **unused_kwargs,
     ) -> tuple[torch.FloatTensor, list[int]]:
         assert len(passages) > 0, "No passages provided"
 
@@ -92,10 +96,12 @@ class ColBERTEncoder(Encoder):
     def encode_queries(
         self,
         queries: list[str],
+        *,
         batch_size: int = 32,
         to_cpu: bool = False,
         keepdims: str = "no_pad",
         progress_bar: bool = True,
+        **unused_kwargs,
     ) -> torch.FloatTensor:
         assert len(queries) > 0, "No queries provided"
 

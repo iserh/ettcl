@@ -28,9 +28,9 @@ class ColbertOutputWitgCrossAttentions(ModelOutput):
 
 @dataclass
 class ColbertRerankingOutput(ModelOutput):
+    loss: torch.Tensor = None
     scores: torch.Tensor = None
     unreduced_scores: torch.Tensor = None
-    loss: torch.Tensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
 
 
@@ -183,7 +183,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
     ) -> ColbertRerankingOutput | tuple[torch.Tensor, torch.Tensor]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # input has shape (BATCH, nway+1, input_length)
+        # input has shape (BATCH, nway, input_length)
         batch_size = input_ids.shape[0]
         nway = input_ids.shape[1]
         input_length = input_ids.shape[2]
@@ -236,12 +236,12 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         # TODO: in-batch negatives loss
 
         if not return_dict:
-            return (scores, unreduced_scores)
+            return (loss, scores, unreduced_scores)
 
         return ColbertRerankingOutput(
+            loss=loss.unsqueeze(0),
             scores=scores,
             unreduced_scores=unreduced_scores,
-            loss=loss.unsqueeze(0),
             hidden_states=outputs.hidden_states,
         )
 
@@ -263,5 +263,5 @@ def colbert_score(Q: torch.Tensor, D: torch.Tensor) -> torch.Tensor:
 
 def maxsim_reduction(scores: torch.Tensor, D_mask: torch.LongTensor) -> torch.Tensor:
     # we don't want to match padding embeddings of the docs (cosine_sim in [-1, +1])
-    scores[~D_mask.bool()] = -2
+    scores[~D_mask.bool()] = -9999
     return scores.max(1).values.sum(-1)

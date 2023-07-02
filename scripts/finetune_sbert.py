@@ -8,11 +8,12 @@ from datasets import load_dataset
 from transformers import Trainer, TrainingArguments
 
 from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
-from ettcl.encoding import ColBERTEncoder
-from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
+from ettcl.modeling import SentenceTransformerForReranking
+from ettcl.encoding import STEncoder
+from ettcl.indexing import FaissSingleVectorIndexer, FaissIndexerConfig
 from ettcl.logging import configure_logger
-from ettcl.modeling import ColBERTConfig, ColBERTForReranking, ColBERTTokenizer
-from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
+from ettcl.searching import FaissSingleVectorSearcher
+from transformers import AutoTokenizer
 from ettcl.utils import seed_everything
 
 
@@ -32,28 +33,18 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
 
-    model_config = ColBERTConfig.from_pretrained(params["model"]["value"], **params["model_config"]["value"])
-    model = ColBERTForReranking.from_pretrained(params["model"]["value"], config=model_config)
-    tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
-    encoder = ColBERTEncoder(model.colbert, tokenizer)
+    model = SentenceTransformerForReranking(params["model"]["value"])
+    # workaround: sentence-transformer tokenizer has wrong model_max_length
+    model.sentence_transformer[0].tokenizer = AutoTokenizer.from_pretrained(params["model"]["value"], **params.get("tokenizer", {}).get("value", {}))
+    encoder = STEncoder(model.sentence_transformer, normalize_embeddings=True)
 
-    indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
-    indexer = ColBERTIndexer(encoder, indexer_config)
+    indexer_config = FaissIndexerConfig(**params["indexer"]["value"])
+    indexer = FaissSingleVectorIndexer(encoder, indexer_config)
 
-    if "searcher_eval" in params.keys():
-        searcher_eval_config = ColBERTSearcherConfig(**params["searcher_eval"]["value"])
-        searcher_eval = ColBERTSearcher(None, encoder, searcher_eval_config)
-    else:
-        searcher_eval = None
-
-    if "searcher_sampling" in params.keys():
-        searcher_sampling_config = ColBERTSearcherConfig(**params["searcher_sampling"]["value"])
-        searcher_sampling = ColBERTSearcher(None, encoder, searcher_eval_config)
-    else:
-        searcher_sampling = None
+    searcher = FaissSingleVectorSearcher(None, encoder)
 
     params["training"]["value"].pop("output_dir", None)
-    training_args = TrainingArguments(output_dir=output_dir, **params["training"]["value"])
+    training_args = TrainingArguments(output_dir=output_dir, seed=seed, **params["training"]["value"])
     config = RerankTrainerConfig(**params["config"]["value"])
 
     train_dataset = load_dataset(params["dataset"]["value"], split="train")
@@ -63,32 +54,25 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         trainer_cls=Trainer,
         model=model,
         encoder=encoder,
-        tokenizer=tokenizer,
+        tokenizer=model.sentence_transformer.tokenizer,
         config=config,
         training_args=training_args,
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         indexer=indexer,
-        searcher_eval=searcher_eval,
-        searcher_sampling=searcher_sampling,
+        searcher_eval=searcher,
+        searcher_sampling=searcher,
     )
 
     trainer.run_config = {
         "dataset": params["dataset"]["value"],
         "model": params["model"]["value"],
-        "seed": seed,
-        "model_config": model_config.to_dict(),
-        "tokenizer": tokenizer.init_kwargs,
+        "model_config": model.config.to_dict(),
+        "tokenizer": model.sentence_transformer.tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
         "training": training_args.to_dict(),
         "config": asdict(config),
     }
-
-    if searcher_eval is not None:
-        trainer.run_config.update({"searcher_eval": asdict(searcher_eval_config)})
-
-    if searcher_sampling is not None:
-        trainer.run_config.update({"searcher_sampling": asdict(searcher_sampling_config)})
 
     trainer.train()
 

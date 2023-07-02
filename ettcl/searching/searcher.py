@@ -69,9 +69,10 @@ class Searcher(ABC):
     def search(
         self,
         queries: TextQueries,
-        k: int,
+        k: int = 10,
+        *,
         return_tensors: bool | str | TensorType = "pt",
-        gpu: bool | int = True,
-        progress_bar: bool = True,
+        use_gpu: bool = True,
+        **kwargs,
     ) -> BatchResult:
         pass

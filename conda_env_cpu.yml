@@ -1,0 +1,6 @@
+name: colbert
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - gcc=11.3.0

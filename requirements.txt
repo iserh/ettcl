@@ -1,12 +1,16 @@
 -e .
 accelerate
+checksumdir
 datasets
 evaluate
 scikit-learn
 scipy
+sentence_transformers
 torch
 tqdm
 transformers
+wrapt
+wandb  # optional
 
 # colbert
 -e ./ColBERT

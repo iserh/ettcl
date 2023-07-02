@@ -1,4 +1,7 @@
-SHELL := /bin/bash
+# .EXPORT_ALL_VARIABLES:
+# TRANSFORMERS_VERBOSITY=info
+# WANDB_MODE=disabled
+# WANDB_DISABLED=true
 
 .DEFAULT: help
 help:
@@ -28,11 +31,9 @@ clean:
 	find . -type d -name .ipynb_checkpoints -prune -exec rm -rf {} \;
 	find . -type d -name *.egg-info -prune -exec rm -rf {} \;
 
-finetune:
-	./scripts/finetune.py configs/finetune_config.yml
 
-finetune-debug:
-	TRANSFORMERS_VERBOSITY=info \
-	WANDB_MODE=disabled \
-	WANDB_DISABLED=true \
-	./scripts/finetune.py configs/finetune_config.yml
+finetune-colbert:
+	./scripts/finetune_colbert.py configs/finetune_config_colbert.yml
+
+finetune-sbert:
+	./scripts/finetune_sbert.py configs/finetune_config_sbert.yml

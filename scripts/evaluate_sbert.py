@@ -7,11 +7,11 @@ from datetime import datetime
 from datasets import load_dataset
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
-from ettcl.encoding import ColBERTEncoder
-from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
+from ettcl.encoding import STEncoder
+from ettcl.indexing import FaissSingleVectorIndexer, FaissIndexerConfig
 from ettcl.logging import configure_logger
-from ettcl.modeling import ColBERTModel, ColBERTTokenizer
-from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
+from sentence_transformers import SentenceTransformer
+from ettcl.searching import FaissSingleVectorSearcher
 from ettcl.utils import seed_everything
 
 
@@ -31,15 +31,13 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
 
-    model = ColBERTModel.from_pretrained(params["model"]["value"])
-    tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"])
-    encoder = ColBERTEncoder(model, tokenizer)
+    model = SentenceTransformer(params["model"]["value"])
+    encoder = STEncoder(model, normalize_embeddings=True)
 
-    indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
-    indexer = ColBERTIndexer(encoder, indexer_config)
+    indexer_config = FaissIndexerConfig(**params["indexer"]["value"])
+    indexer = FaissSingleVectorIndexer(encoder, indexer_config)
 
-    searcher_config = ColBERTSearcherConfig(**params["searcher"]["value"])
-    searcher = ColBERTSearcher(None, encoder, searcher_config)
+    searcher = FaissSingleVectorSearcher(None, encoder)
 
     config = EvaluatorConfig(output_dir, **params["config"]["value"])
 
@@ -59,8 +57,8 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         "dataset": params["dataset"]["value"],
         "model": params["model"]["value"],
         "seed": seed,
-        "model_config": model.config.to_dict(),
-        "tokenizer": tokenizer.init_kwargs,
+        "model_config": model[0].auto_model.config.to_dict(),
+        "tokenizer": model.tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
         "config": asdict(config),
     }
