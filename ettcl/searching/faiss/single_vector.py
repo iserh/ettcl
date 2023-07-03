@@ -1,5 +1,7 @@
+import json
 from dataclasses import dataclass
 from logging import getLogger
+from pathlib import Path
 
 import torch
 from colbert.infra.config import BaseConfig, RunConfig, RunSettings, SearchSettings
@@ -12,9 +14,6 @@ from ettcl.encoding.encoder import Encoder
 from ettcl.indexing.indexer import IndexPath
 from ettcl.logging.tqdm import trange
 from ettcl.searching.searcher import BatchResult, Searcher, TensorLike, TensorType, TextQueries
-import json
-from pathlib import Path
-
 
 logger = getLogger(__name__)
 

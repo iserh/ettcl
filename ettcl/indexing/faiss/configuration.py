@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Literal
+
 from faiss import METRIC_INNER_PRODUCT, METRIC_L2
 
 
@@ -7,7 +8,7 @@ from faiss import METRIC_INNER_PRODUCT, METRIC_L2
 class FaissIndexerConfig:
     string_factory: str | None = None
     train_size: int | None = None
-    metric_type: Literal['inner_product', 'l2_distance'] = "inner_product"
+    metric_type: Literal["inner_product", "l2_distance"] = "inner_product"
 
     @property
     def metric_type_faiss(self) -> int:

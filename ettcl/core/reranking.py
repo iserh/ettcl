@@ -23,6 +23,7 @@ from ettcl.core.triple_sampling import (
 )
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer, IndexPath
+from ettcl.logging import memory_stats, profile_memory
 from ettcl.searching import Searcher
 from ettcl.utils.multiprocessing import run_multiprocessed
 
@@ -136,6 +137,9 @@ class RerankTrainer:
         while epoch < num_train_epochs:
             logger.info(f"\n\n## EPOCH {epoch}\n")
 
+            with memory_stats():
+                pass
+
             if epoch == next_resample:
                 train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
             if epoch in [next_dev_eval, next_eval] or (epoch == next_resample and do_searched_sampling):
@@ -177,7 +181,12 @@ class RerankTrainer:
             )
 
             logger.info(f"training epoch {epoch} - {training_args.num_train_epochs}")
-            trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
+            with memory_stats():
+                trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
+                self.model.cpu()
+
+            # necessary so that reserved memory is freed and can be used by multiprocesses
+            torch.cuda.empty_cache()
 
             global_step = trainer.state.global_step
             epoch = int(round(trainer.state.epoch))
@@ -198,9 +207,7 @@ class RerankTrainer:
             eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
             self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
 
-        self.model.cpu()
         self.finish()
-
         logger.info(f"See training artifacts at {training_args.output_dir}")
 
     def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, step: int, prefix: str = "") -> None:
@@ -245,11 +252,13 @@ class RerankTrainer:
         logger.info(metrics)
         self.log(metrics)
 
+    @profile_memory
     def build_index(self, dataset: Dataset, step: int) -> IndexPath:
         logger.info("build index")
         index_path = os.path.join(self.training_args.output_dir, f"checkpoint-{step}", "index")
         return self.indexer.index(index_path, dataset[self.config.text_column], gpus=True)
 
+    @profile_memory
     def search_dataset(self, dataset: Dataset, searcher: Searcher, k: int) -> Dataset:
         logger.info("search dataset")
         searcher.index_path = self.index_path
@@ -349,9 +358,9 @@ class RerankTrainer:
             self.run.log_code(
                 ".",
                 include_fn=lambda path: path.endswith(".py")
-                                        or path.endswith(".cpp")
-                                        or path.endswith(".cu")
-                                        or path.endswith(".yml"),
+                or path.endswith(".cpp")
+                or path.endswith(".cu")
+                or path.endswith(".yml"),
             )
         except ModuleNotFoundError:
             pass

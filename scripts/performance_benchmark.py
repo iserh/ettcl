@@ -2,11 +2,12 @@ if __name__ == "__main__":
     import torch
     import wandb
     from datasets import load_dataset
-    from ettcl.modeling import ColBERTModel, ColBERTTokenizer
+
     from ettcl.encoding import ColBERTEncoder
+    from ettcl.modeling import ColBERTModel, ColBERTTokenizer
     from ettcl.searching.colbert_searcher import ColBERTSearcher, ColBERTSearcherConfig
-    from ettcl.utils.multiprocessing import run_multiprocessed
     from ettcl.utils import catchtime
+    from ettcl.utils.multiprocessing import run_multiprocessed
 
     model_path = "./training/imdb/bert-base-uncased/2023-06-30T09:30:28.027860/checkpoint-7500"
     index_path = "./training/imdb/bert-base-uncased/2023-06-30T09:30:28.027860/checkpoint-7500/index"
@@ -16,7 +17,6 @@ if __name__ == "__main__":
     model = ColBERTModel.from_pretrained(model_path)
     tokenizer = ColBERTTokenizer.from_pretrained(model_path)
     encoder = ColBERTEncoder(model, tokenizer)
-
 
     def search(dataset, config, num_proc, k):
         searcher = ColBERTSearcher(index_path, encoder, config)
@@ -29,7 +29,6 @@ if __name__ == "__main__":
             with_rank=True,
             num_proc=num_proc,
         )
-
 
     def profile(dataset, config, num_proc, k):
         torch.cuda.empty_cache()

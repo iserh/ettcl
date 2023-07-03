@@ -76,14 +76,18 @@ class MultiProcessedEncoder(Encoder):
         return self
 
     @run_multiprocessed
-    def encode_passages(self, passages: list[str], *, rank: int, return_dict: bool = True, progress_bar: bool = False, **kwargs) -> dict:
+    def encode_passages(
+        self, passages: list[str], *, rank: int, return_dict: bool = True, progress_bar: bool = False, **kwargs
+    ) -> dict:
         if torch.cuda.is_available():
             self.encoder.cuda()
 
         return self.encoder.encode_passages(passages, return_dict=return_dict, progress_bar=progress_bar, **kwargs)
 
     @run_multiprocessed
-    def encode_queries(self, passages: list[str], *, rank: int, return_dict: bool = True, progress_bar: bool = False, **kwargs) -> dict:
+    def encode_queries(
+        self, passages: list[str], *, rank: int, return_dict: bool = True, progress_bar: bool = False, **kwargs
+    ) -> dict:
         if torch.cuda.is_available():
             self.encoder.cuda()
 

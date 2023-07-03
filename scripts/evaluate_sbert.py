@@ -5,12 +5,12 @@ from dataclasses import asdict
 from datetime import datetime
 
 from datasets import load_dataset
+from sentence_transformers import SentenceTransformer
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
 from ettcl.encoding import STEncoder
-from ettcl.indexing import FaissSingleVectorIndexer, FaissIndexerConfig
+from ettcl.indexing import FaissIndexerConfig, FaissSingleVectorIndexer
 from ettcl.logging import configure_logger
-from sentence_transformers import SentenceTransformer
 from ettcl.searching import FaissSingleVectorSearcher
 from ettcl.utils import seed_everything
 

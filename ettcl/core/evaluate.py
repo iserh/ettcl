@@ -49,12 +49,8 @@ class Evaluator:
         self.indexer = indexer
         self.searcher = searcher
 
-        self.train_dataset = train_dataset.rename_columns(
-            {config.text_column: "text", config.label_column: "label"}
-        )
-        self.eval_dataset = eval_dataset.rename_columns(
-            {config.text_column: "text", config.label_column: "label"}
-        )
+        self.train_dataset = train_dataset.rename_columns({config.text_column: "text", config.label_column: "label"})
+        self.eval_dataset = eval_dataset.rename_columns({config.text_column: "text", config.label_column: "label"})
 
         self._run_config = {}
 
@@ -171,9 +167,9 @@ class Evaluator:
             self.run.log_code(
                 ".",
                 include_fn=lambda path: path.endswith(".py")
-                                        or path.endswith(".cpp")
-                                        or path.endswith(".cu")
-                                        or path.endswith(".yml"),
+                or path.endswith(".cpp")
+                or path.endswith(".cu")
+                or path.endswith(".yml"),
             )
         except ModuleNotFoundError:
             pass

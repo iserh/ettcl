@@ -31,6 +31,11 @@ clean:
 	find . -type d -name .ipynb_checkpoints -prune -exec rm -rf {} \;
 	find . -type d -name *.egg-info -prune -exec rm -rf {} \;
 
+evaluate-colbert:
+	./scripts/evaluate_colbert.py configs/eval_config_colbert.yml
+
+evaluate-sbert:
+	./scripts/evaluate_sbert.py configs/eval_config_sbert.yml
 
 finetune-colbert:
 	./scripts/finetune_colbert.py configs/finetune_config_colbert.yml

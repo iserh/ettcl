@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from os import PathLike
+
 import torch
 from datasets import Dataset
 from transformers import DataCollatorWithPadding
@@ -41,6 +43,18 @@ class ColBERTEncoder(MultiVectorEncoder):
         self.model.cpu()
         self.use_gpu = False
         return self
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: str | PathLike | None,
+        *,
+        model_kwargs: dict = {},
+        tokenizer_kwargs: dict = {},
+    ) -> TEncoder:
+        model = ColBERTModel.from_pretrained(pretrained_model_name_or_path, **model_kwargs)
+        tokenizer = ColBERTTokenizer.from_pretrained(pretrained_model_name_or_path, **tokenizer_kwargs)
+        return cls(model, tokenizer)
 
     def encode_passages(
         self,

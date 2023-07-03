@@ -1,5 +1,10 @@
 import logging
 import os
+from contextlib import contextmanager
+
+import torch
+
+logger = logging.getLogger(__name__)
 
 
 def configure_logger(log_level: int | str) -> None:
@@ -19,3 +24,27 @@ def configure_logger(log_level: int | str) -> None:
         format="[%(rank)s][%(asctime)s] [%(levelname)s] [%(funcName)s] %(message)s",
         level=log_level,
     )
+
+
+@contextmanager
+def memory_stats() -> None:
+    for idx in range(torch.cuda.device_count()):
+        torch.cuda.reset_peak_memory_stats(idx)
+
+    try:
+        yield
+
+    finally:
+        for idx in range(torch.cuda.device_count()):
+            try:
+                logger.info("\n" + torch.cuda.memory_summary(idx, True))
+            except KeyError:
+                logger.info(f"Could not print memory stats for device {idx}")
+
+
+def profile_memory(fn: callable) -> callable:
+    def fn_wrapper(*args, **kwargs):
+        with memory_stats():
+            return fn(*args, **kwargs)
+
+    return fn_wrapper

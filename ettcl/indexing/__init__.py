@@ -1,3 +1,3 @@
 from .colbert import ColBERTIndexer, ColBERTIndexerConfig
-from .faiss import FaissSingleVectorIndexer, FaissIndexerConfig
+from .faiss import FaissIndexerConfig, FaissSingleVectorIndexer
 from .indexer import Indexer, IndexPath

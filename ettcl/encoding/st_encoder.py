@@ -1,7 +1,9 @@
 import itertools
 from collections.abc import Iterable, Iterator
+
 import torch
 from sentence_transformers import SentenceTransformer
+
 from ettcl.encoding.encoder import SingleVectorEncoder, TEncoder
 
 
@@ -47,7 +49,7 @@ class STEncoder(SingleVectorEncoder):
         assert len(passages) > 0, "No passages provided"
 
         embeddings = []
-        for megabatch in chunked(passages, n=batch_size * 8):
+        for megabatch in chunked(passages, n=batch_size * 4):
             batch_embeddings = self.model.encode(
                 megabatch,
                 batch_size=batch_size,

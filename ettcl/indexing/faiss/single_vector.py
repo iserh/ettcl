@@ -1,16 +1,17 @@
-from ettcl.indexing.indexer import Indexer, IndexPath
-from ettcl.encoding.encoder import Encoder, MultiProcessedEncoder
-from datasets import Dataset
-from ettcl.utils.utils import Devices, to_gpu_list
+import json
 from os import PathLike
 from pathlib import Path
+
 import torch
+from datasets import Dataset
+
+from ettcl.encoding.encoder import Encoder, MultiProcessedEncoder
 from ettcl.indexing.faiss.configuration import FaissIndexerConfig
-import json
+from ettcl.indexing.indexer import Indexer, IndexPath
+from ettcl.utils.utils import Devices, to_gpu_list
 
 
 class FaissSingleVectorIndexer(Indexer):
-
     def __init__(self, encoder: Encoder, config: FaissIndexerConfig = FaissIndexerConfig()) -> None:
         self.encoder = encoder
         self.config = config
@@ -44,11 +45,11 @@ class FaissSingleVectorIndexer(Indexer):
             collection = collection.map(
                 encoder.encode_passages,
                 input_columns="text",
+                fn_kwargs={"to_cpu": True},
                 batched=True,
-                batch_size=2048,
                 with_rank=n_processes is not None,
                 num_proc=n_processes,
-                desc="Encoding"
+                desc="Encoding",
             )
 
             collection.set_format("numpy")
@@ -60,7 +61,6 @@ class FaissSingleVectorIndexer(Indexer):
                 train_size=self.config.train_size or len(collection),
                 metric_type=self.config.metric_type_faiss,
             )
-
 
         output_path.mkdir(exist_ok=True, parents=True)
 
