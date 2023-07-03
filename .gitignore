@@ -144,3 +144,6 @@ dmypy.json
 !/notebooks/*.ipynb
 /wandb/
 /notebooks/wandb/
+
+
+/notebooks/dev.ipynb
