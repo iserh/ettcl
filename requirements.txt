@@ -2,9 +2,12 @@
 accelerate
 checksumdir
 datasets
+distinctipy
 evaluate
+matplotlib
 scikit-learn
 scipy
+seaborn
 sentence_transformers
 torch
 tqdm
