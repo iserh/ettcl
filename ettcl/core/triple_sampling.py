@@ -101,6 +101,7 @@ class TripleSamplingDataBuilder:
         n_negatives: int | None = None,
         return_missing: bool = False,
         positive_always_random: bool = False,
+        lower_ranked_positives: bool = False,
         sample_triples: bool = False,
     ) -> None:
         assert nway >= 3, "NWay tuples have to be at least of size 3 (anchor, positive, negative)"
@@ -111,6 +112,7 @@ class TripleSamplingDataBuilder:
         self.n_negatives = n_negatives or nway - 2
         self.return_missing = return_missing and sampling_method in [SamplingMethod.searched]
         self.positive_always_random = positive_always_random
+        self.lower_ranked_positives = lower_ranked_positives
         self.sample_triples = sample_triples
         # compute unique labels
         self.unique_labels = np.unique(passage_labels)
@@ -207,6 +209,8 @@ class TripleSamplingDataBuilder:
                     positive_probs = (
                         np.arange(len(positive_pids), 0, -1).astype(np.float32) if len(positive_pids) > 1 else None
                     )
+                    if self.lower_ranked_positives:
+                        positive_probs = np.flip(positive_probs)
                 negative_probs = (
                     np.arange(len(negative_pids), 0, -1).astype(np.float32) if len(negative_pids) > 1 else None
                 )

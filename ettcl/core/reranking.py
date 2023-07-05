@@ -53,6 +53,7 @@ class RerankTrainerConfig:
     n_positives: int | None = None
     n_negatives: int | None = None
     positive_always_random: bool = False
+    lower_ranked_positives: bool = False
     log_model_artifact: bool = True
 
 
@@ -297,6 +298,7 @@ class RerankTrainer:
             n_negatives=self.config.n_negatives,
             return_missing=True,
             positive_always_random=self.config.positive_always_random,
+            lower_ranked_positives=self.config.lower_ranked_positives,
         )
 
         dataset = dataset.map(
