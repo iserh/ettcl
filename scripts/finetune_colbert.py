@@ -75,6 +75,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     trainer.run_config = {
         "dataset": params["dataset"]["value"],
+        "architecture": "ColBERT",
         "model": params["model"]["value"],
         "model_config": model_config.to_dict(),
         "tokenizer": tokenizer.init_kwargs,

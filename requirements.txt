@@ -4,6 +4,7 @@ checksumdir
 datasets
 distinctipy
 evaluate
+gensim
 matplotlib
 scikit-learn
 scipy

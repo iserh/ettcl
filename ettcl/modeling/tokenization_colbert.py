@@ -37,6 +37,7 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
         doc_maxlen: int = 512,
         query_augmentation: bool = False,
         attend_to_mask_tokens: bool = False,
+        add_special_tokens: bool = True,
         *inputs,
         **kwargs,
     ) -> None:
@@ -58,6 +59,7 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
         self.doc_maxlen = doc_maxlen
         self.query_augmentation = query_augmentation
         self.attend_to_mask_tokens = attend_to_mask_tokens
+        self.def_add_special_tokens = add_special_tokens
 
         if self.attend_to_mask_tokens and not self.query_augmentation:
             logger.warning("With `query_augmentation` disabled, `attend_to_mask_tokens` (set to True) will be ignored.")
@@ -82,10 +84,13 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
         self,
         text: str | list[str],
         mode: TokenizerMode = "doc",
-        add_special_tokens: bool = True,
+        add_special_tokens: bool | None = None,
         pretty: bool = True,
         **kwargs,
     ) -> list[list[str]] | list[str]:
+        if add_special_tokens is None:
+            add_special_tokens = self.def_add_special_tokens
+
         special_token = self.doc_token if mode == "doc" else self.query_token
         special_token = special_token or ""
 
@@ -131,21 +136,25 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
         self,
         text: str | list[str],
         mode: TokenizerMode = "doc",
-        add_special_tokens: bool = True,
+        add_special_tokens: bool | None = None,
         padding: bool | str | PaddingStrategy = False,
         truncation: bool | str | TruncationStrategy = True,
         return_tensors: str | TensorType | None = None,
+        max_length: str | None = None,
+        return_token_type_ids: bool | None = False,
         **kwargs,
     ) -> BatchEncoding:
         if isinstance(text, str):
             text = [text]
+
+        if add_special_tokens is None:
+            add_special_tokens = self.def_add_special_tokens
 
         # add special token
         special_token = self.doc_token if mode == "doc" else self.query_token
         if special_token is not None:
             text = [special_token + s for s in text]
 
-        max_length = kwargs.pop("max_length", None)
         if max_length is None:
             max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen
 
@@ -156,6 +165,7 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
             truncation=truncation,
             max_length=max_length,
             return_tensors=return_tensors,
+            return_token_type_ids=return_token_type_ids,
             **kwargs,
         )
 

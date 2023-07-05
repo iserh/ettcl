@@ -7,10 +7,10 @@ from datetime import datetime
 from datasets import load_dataset
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
-from ettcl.encoding import ColBERTEncoder
+from ettcl.encoding import Word2VecEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.logging import configure_logger
-from ettcl.modeling import ColBERTModel, ColBERTTokenizer
+from gensim.models import FastText
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
 from ettcl.utils import seed_everything
 
@@ -31,9 +31,8 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
 
-    model = ColBERTModel.from_pretrained(params["model"]["value"])
-    tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
-    encoder = ColBERTEncoder(model, tokenizer)
+    model = FastText.load(params["model"]["value"])
+    encoder = Word2VecEncoder(model)
 
     indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
     indexer = ColBERTIndexer(encoder, indexer_config)
@@ -57,11 +56,9 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     evaluator.run_config = {
         "dataset": params["dataset"]["value"],
-        "architecture": "ColBERT",
+        "architecture": "FastText",
         "model": params["model"]["value"],
         "seed": seed,
-        "model_config": model.config.to_dict(),
-        "tokenizer": tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
         "config": asdict(config),
     }

@@ -21,9 +21,6 @@ logger = getLogger(__name__)
 class ColbertOutputWitgCrossAttentions(ModelOutput):
     normalized_output: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
-    past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None
-    attentions: Optional[Tuple[torch.FloatTensor]] = None
-    cross_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
 @dataclass
@@ -77,7 +74,6 @@ class ColBERTModel(ColBERTPreTrainedModel):
     ) -> None:
         super().__init__(config)
         self.config = config
-        self.output_dimensionality = self.config.compression_dim or config.hidden_size
 
         # if base_model_class is provided this model class is used, otherwise revert to config definition
         if base_model_class is not None:
@@ -87,6 +83,8 @@ class ColBERTModel(ColBERTPreTrainedModel):
             # the config_dict (which contains the `model_type` key)
             config = AutoConfig.for_model(**config.to_dict())
             base_model = AutoModel.from_config(config)
+
+        self.output_dimensionality = self.config.compression_dim or base_model.get_input_embeddings().weight.shape[-1]
 
         # set the correct base_model_prefix
         self.lm_base_model_prefix = base_model.base_model_prefix
@@ -115,30 +113,16 @@ class ColBERTModel(ColBERTPreTrainedModel):
         self,
         input_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        **kwargs,
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         encoder_outputs = self.LM(
             input_ids,
             attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            **kwargs,
         )
 
         sequence_output = encoder_outputs[0]
@@ -151,10 +135,7 @@ class ColBERTModel(ColBERTPreTrainedModel):
 
         return ColbertOutputWitgCrossAttentions(
             normalized_output=normalized_output,
-            past_key_values=encoder_outputs.past_key_values,
             hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
-            cross_attentions=encoder_outputs.cross_attentions,
         )
 
 
@@ -176,7 +157,6 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         self,
         input_ids: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        token_type_ids: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         target_scores: torch.Tensor | None = None,
         return_dict: bool | None = None,
@@ -191,7 +171,6 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         outputs = self.colbert(
             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,
             attention_mask=attention_mask.view(-1, input_length) if attention_mask is not None else None,
-            token_type_ids=token_type_ids.view(-1, input_length) if token_type_ids is not None else None,
             return_dict=return_dict,
         )
 

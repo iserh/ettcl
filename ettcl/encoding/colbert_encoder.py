@@ -70,7 +70,6 @@ class ColBERTEncoder(MultiVectorEncoder):
         encodings = self.tokenizer(
             passages,
             mode="doc",
-            add_special_tokens=True,
             truncation="longest_first",
             return_length=True,
         )
@@ -122,7 +121,6 @@ class ColBERTEncoder(MultiVectorEncoder):
         encodings = self.tokenizer(
             queries,
             mode="query",
-            add_special_tokens=True,
             truncation="longest_first",
             return_length=True,
         )
