@@ -25,6 +25,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     output_dir = os.path.join(
         "training",
         os.path.basename(params["dataset"]["value"]),
+        "colbert",
         os.path.basename(params["model"]["value"]),
         datetime.now().isoformat(),
     )

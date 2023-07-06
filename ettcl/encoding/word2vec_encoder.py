@@ -3,6 +3,7 @@ from collections.abc import Iterable, Iterator
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from datasets import Dataset
 from datasets.utils.logging import disable_progress_bar
 from gensim.models import FastText, Word2Vec
@@ -10,7 +11,6 @@ from gensim.utils import simple_preprocess
 
 from ettcl.encoding.encoder import MultiVectorEncoder, TEncoder
 from ettcl.logging.tqdm import tqdm
-import torch.nn.functional as F
 
 
 def preprocess(text: str, max_length: int = 512, **kwargs) -> list[str]:
@@ -109,4 +109,3 @@ class Word2VecEncoder(MultiVectorEncoder):
             return embeddings
 
         return {"embeddings": embeddings}
-

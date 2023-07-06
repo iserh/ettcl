@@ -1,6 +1,7 @@
-from datasets import load_dataset, Dataset
+from datasets import Dataset, load_dataset
 from gensim.models import FastText
 from gensim.utils import simple_preprocess
+
 from ettcl.logging import configure_logger
 
 configure_logger("INFO")
@@ -12,8 +13,10 @@ label_column = "label"
 train_dataset = load_dataset(dataset_name, split="train")
 train_dataset = train_dataset.rename_columns({text_column: "text", label_column: "label"})
 
+
 def preprocess(text: str, max_length: int = 512, **kwargs) -> list[str]:
     return {"tokens": simple_preprocess(text, **kwargs)[:max_length]}
+
 
 corpus = Dataset.from_dict({"text": train_dataset["text"]})
 

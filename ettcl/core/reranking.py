@@ -117,7 +117,6 @@ class RerankTrainer:
         do_searched_sampling = self.config.sampling_method == "searched"
         resample_interval = self.config.resample_interval or num_train_epochs
         dev_eval_interval = self.config.dev_eval_interval if self.config.do_dev_eval else None
-        eval_interval = self.config.eval_interval if self.config.do_eval else None
 
         train_dataset = self.train_dataset
 
@@ -134,7 +133,6 @@ class RerankTrainer:
         epoch, global_step = 0, 0
         next_resample = 0
         next_dev_eval = 0 if dev_eval_interval is not None else num_train_epochs
-        next_eval = 0 if eval_interval is not None else num_train_epochs
         while epoch < num_train_epochs:
             logger.info(f"\n\n## EPOCH {epoch}\n")
 
@@ -143,16 +141,12 @@ class RerankTrainer:
 
             if epoch == next_resample:
                 train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
-            if epoch in [next_dev_eval, next_eval] or (epoch == next_resample and do_searched_sampling):
+            if epoch == next_dev_eval or (epoch == next_resample and do_searched_sampling):
                 self.index_path = self.build_index(train_subsample, step=global_step)
 
             if epoch == next_dev_eval:
                 next_dev_eval = epoch + dev_eval_interval
-                self.evaluate(train_subsample, dev_dataset, epoch, global_step, prefix="dev")
-            if epoch == next_eval:
-                next_eval = epoch + eval_interval
-                eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-                self.evaluate(train_subsample, eval_dataset, epoch, global_step, prefix="test")
+                self.evaluate(train_subsample, dev_dataset, epoch, global_step, prefix="eval")
 
             if epoch == next_resample:
                 next_resample = epoch + resample_interval
@@ -172,7 +166,7 @@ class RerankTrainer:
             n_params = sum([np.prod(p.size()) for p in model_parameters])
             logger.info(f"Training {n_params} parameters")
 
-            training_args.num_train_epochs = min(next_resample, next_dev_eval, next_eval)
+            training_args.num_train_epochs = min(next_resample, next_dev_eval)
             trainer = self.trainer_cls(
                 model=self.model,
                 tokenizer=self.tokenizer,
@@ -192,26 +186,35 @@ class RerankTrainer:
             global_step = trainer.state.global_step
             epoch = int(round(trainer.state.epoch))
 
-        if self.config.do_eval or self.config.do_dev_eval:
-            self.index_path = self.build_index(train_dataset, step=global_step)
-
-        if self.config.log_model_artifact:
-            latest = os.path.join(training_args.output_dir, "latest")
-            trainer.save_model(latest)
-            self.log_dir_artifact(latest, name="model", type="model")
-            if self.index_path is not None:
-                self.log_dir_artifact(self.index_path, name="index", type="index")
-
         if self.config.do_dev_eval:
-            self.evaluate(train_dataset, dev_dataset, epoch, global_step, prefix="dev")
+            self.index_path = self.build_index(train_dataset, step=global_step)
+            self.evaluate(train_dataset, dev_dataset, epoch, global_step, prefix="eval")
+
+        latest = Path(training_args.output_dir) / "latest"
+        latest.mkdir()
+
+        logger.info(f"See training artifacts at {latest}")
+        trainer.save_model(latest / "model")
+        self.index_path = self.indexer.index(latest / "index", self.train_dataset["text"], gpus=True)
+
         if self.config.do_eval:
             eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-            self.evaluate(train_dataset, eval_dataset, epoch, global_step, prefix="test")
+            self.evaluate(self.train_dataset, eval_dataset, prefix="test")
+
+        if self.config.log_model_artifact:
+            self.log_dir_artifact(latest / "model", name="model", type="model")
+            self.log_dir_artifact(self.index_path, name="index", type="index")
 
         self.finish()
-        logger.info(f"See training artifacts at {training_args.output_dir}")
 
-    def evaluate(self, train_dataset: Dataset, test_dataset: Dataset, epoch: int, step: int, prefix: str = "") -> None:
+    def evaluate(
+        self,
+        train_dataset: Dataset,
+        test_dataset: Dataset,
+        epoch: int | None = None,
+        step: int | None = None,
+        prefix: str = "",
+    ) -> None:
         logger.info(f"evaluate {prefix}")
         max_k = max(self.config.eval_ks)
 
@@ -228,7 +231,13 @@ class RerankTrainer:
         match_labels = train_dataset["label"][match_pids.tolist()]
 
         logger.info(f"compute metrics {prefix}")
-        metrics = {"train/epoch": epoch, "train/step": step}
+
+        metrics = {}
+        if epoch is not None:
+            metrics["train/epoch"] = epoch
+        if step is not None:
+            metrics["train/step"] = step
+
         for k in self.config.eval_ks:
             knn = match_labels[:, :k]
             y_pred = torch.mode(knn)[0]
@@ -257,7 +266,7 @@ class RerankTrainer:
     def build_index(self, dataset: Dataset, step: int) -> IndexPath:
         logger.info("build index")
         index_path = os.path.join(self.training_args.output_dir, f"checkpoint-{step}", "index")
-        return self.indexer.index(index_path, dataset[self.config.text_column], gpus=True)
+        return self.indexer.index(index_path, dataset["text"], gpus=True)
 
     @profile_memory
     def search_dataset(self, dataset: Dataset, searcher: Searcher, k: int) -> Dataset:
@@ -266,7 +275,7 @@ class RerankTrainer:
         dataset.set_format(None)
         dataset = dataset.map(
             run_multiprocessed(searcher.search),
-            input_columns=self.config.text_column,
+            input_columns="text",
             fn_kwargs={"k": k},
             batched=True,
             num_proc=torch.cuda.device_count(),
@@ -325,8 +334,8 @@ class RerankTrainer:
         logger.info("tokenize")
         return dataset.map(
             lambda batch: self.tokenizer(batch, truncation=True),
-            input_columns=self.config.text_column,
-            remove_columns=self.config.text_column,
+            input_columns="text",
+            remove_columns="text",
             batched=True,
             desc="Tokenize",
         )

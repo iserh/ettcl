@@ -5,12 +5,12 @@ from dataclasses import asdict
 from datetime import datetime
 
 from datasets import load_dataset
+from gensim.models import FastText
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
 from ettcl.encoding import Word2VecEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.logging import configure_logger
-from gensim.models import FastText
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
 from ettcl.utils import seed_everything
 
@@ -24,6 +24,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     output_dir = os.path.join(
         "evaluation",
         os.path.basename(params["dataset"]["value"]),
+        "fasttext",
         os.path.basename(params["model"]["value"]),
         datetime.now().isoformat(),
     )
