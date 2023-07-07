@@ -1,18 +1,8 @@
-import itertools
-from collections.abc import Iterable, Iterator
-
 import torch
 from sentence_transformers import SentenceTransformer
 
 from ettcl.encoding.encoder import SingleVectorEncoder, TEncoder
-
-
-def chunked(iterator: Iterator | Iterable, n: int) -> Iterator[list]:
-    if isinstance(iterator, Iterable):
-        iterator = iter(iterator)
-
-    while chunk := list(itertools.islice(iterator, n)):
-        yield chunk
+from ettcl.utils.utils import chunked
 
 
 class STEncoder(SingleVectorEncoder):

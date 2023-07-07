@@ -1,4 +1,6 @@
+import itertools
 import random
+from collections.abc import Iterable, Iterator
 from logging import getLogger
 from time import perf_counter
 
@@ -7,6 +9,14 @@ import torch
 
 logger = getLogger(__name__)
 Devices = int | bool | list[int] | list[str] | None
+
+
+def chunked(iterator: Iterator | Iterable, n: int) -> Iterator[list]:
+    if isinstance(iterator, Iterable):
+        iterator = iter(iterator)
+
+    while chunk := list(itertools.islice(iterator, n)):
+        yield chunk
 
 
 def seed_everything(seed: int = 12345) -> None:

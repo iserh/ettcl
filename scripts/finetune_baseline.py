@@ -8,8 +8,8 @@ import wandb
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from transformers import (
-    AutoTokenizer,
     AutoModelForSequenceClassification,
+    AutoTokenizer,
     EvalPrediction,
     Trainer,
     TrainingArguments,
