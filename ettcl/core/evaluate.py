@@ -30,9 +30,15 @@ class EvaluatorConfig:
     label_column: str = "label"
     text_column: str = "text"
     prefix: str = "test"
+    stratify_splits: bool = True
 
 
 class Evaluator:
+
+    TEXT_COLUMN = "text"
+    LABEL_COLUMN = "labels"
+    CONFIG_CLS = EvaluatorConfig
+
     def __init__(
         self,
         train_dataset: Dataset,
@@ -49,8 +55,8 @@ class Evaluator:
         self.indexer = indexer
         self.searcher = searcher
 
-        self.train_dataset = train_dataset.rename_columns({config.text_column: "text", config.label_column: "label"})
-        self.eval_dataset = eval_dataset.rename_columns({config.text_column: "text", config.label_column: "label"})
+        self.train_dataset = train_dataset.rename_columns({config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN})
+        self.eval_dataset = eval_dataset.rename_columns({config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN})
 
         self._run_config = {}
 
@@ -88,7 +94,7 @@ class Evaluator:
             logger.warning(f"fewer elements than k={max_k} matched, filling up with (-1).")
             match_pids = torch.nn.utils.rnn.pad_sequence(match_pids, batch_first=True, padding_value=-1)
 
-        match_labels = train_dataset["label"][match_pids.tolist()]
+        match_labels = train_dataset[self.LABEL_COLUMN][match_pids.tolist()]
 
         logger.info(f"compute metrics {prefix}")
         metrics = {}
@@ -97,21 +103,21 @@ class Evaluator:
             y_pred = torch.mode(knn)[0]
             assert -1 not in y_pred, "Not enough matches"
 
-            metrics[f"{prefix}/accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset["label"])
+            metrics[f"{prefix}/accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN])
             metrics[f"{prefix}/precision/micro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="micro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
             )
             metrics[f"{prefix}/precision/macro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="macro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
             )
             metrics[f"{prefix}/recall/micro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="micro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
             )
             metrics[f"{prefix}/recall/macro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="macro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
             )
-            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset["label"], average="micro")
-            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset["label"], average="macro")
+            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro")
+            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro")
 
         logger.info(metrics)
         self.log(metrics)
@@ -119,7 +125,7 @@ class Evaluator:
     def build_index(self, dataset: Dataset) -> IndexPath:
         logger.info("build index")
         index_path = os.path.join(self.config.output_dir, "index_eval")
-        return self.indexer.index(index_path, dataset["text"], gpus=True)
+        return self.indexer.index(index_path, dataset[self.TEXT_COLUMN], gpus=True)
 
     def search_dataset(self, dataset: Dataset, searcher: Searcher, k: int) -> Dataset:
         logger.info("search dataset")
@@ -127,7 +133,7 @@ class Evaluator:
         dataset.set_format(None)
         dataset = dataset.map(
             run_multiprocessed(searcher.search),
-            input_columns="text",
+            input_columns=self.TEXT_COLUMN,
             fn_kwargs={"k": k},
             batched=True,
             num_proc=torch.cuda.device_count(),
@@ -147,7 +153,7 @@ class Evaluator:
     def subsample(self, dataset: Dataset, n: int | float | None):
         logger.info("subsample")
         if n is not None:
-            return dataset.train_test_split(train_size=n, stratify_by_column="label", load_from_cache_file=False)[
+            return dataset.train_test_split(train_size=n, stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None, load_from_cache_file=False)[
                 "train"
             ]
         else:

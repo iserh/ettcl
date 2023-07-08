@@ -43,6 +43,7 @@ class RerankTrainerConfig:
     searcher_sampling_k: int | None = None
     subsample_train: int | None = None
     subsample_eval: int | None = None
+    final_subsample_train: int | None = None
     label_column: str = "label"
     text_column: str = "text"
     remove_columns: list[str] = field(default_factory=list)
@@ -55,9 +56,15 @@ class RerankTrainerConfig:
     positive_always_random: bool = False
     lower_ranked_positives: bool = False
     log_model_artifact: bool = True
+    stratify_splits: bool = True
 
 
 class RerankTrainer:
+    TEXT_COLUMN = "text"
+    LABEL_COLUMN = "label"
+    CONFIG_CLS = RerankTrainerConfig
+    TRIPLE_SAMPLER_CLS = TripleSamplingDataBuilder
+
     def __init__(
         self,
         trainer_cls: type[Trainer],
@@ -79,13 +86,13 @@ class RerankTrainer:
         self.training_args = training_args
         self.train_dataset = train_dataset.remove_columns(self.config.remove_columns)
         self.train_dataset = self.train_dataset.rename_columns(
-            {config.text_column: "text", config.label_column: "label"}
+            {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
         )
         self.eval_dataset = eval_dataset
         if self.eval_dataset is not None:
             self.eval_dataset = eval_dataset.remove_columns(self.config.remove_columns)
             self.eval_dataset = self.eval_dataset.rename_columns(
-                {config.text_column: "text", config.label_column: "label"}
+                {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
             )
         elif self.config.do_eval:
             logger.warning("No evaluation dataset provided, disabling final evaluation.")
@@ -187,23 +194,23 @@ class RerankTrainer:
             epoch = int(round(trainer.state.epoch))
 
         if self.config.do_dev_eval:
-            self.index_path = self.build_index(train_dataset, step=global_step)
-            self.evaluate(train_dataset, dev_dataset, epoch, global_step, prefix="eval")
+            train_subsample = self.subsample(train_dataset, n=self.config.subsample_train)
+            self.index_path = self.build_index(train_subsample, step=global_step)
+            self.evaluate(train_subsample, dev_dataset, epoch, global_step, prefix="eval")
 
-        latest = Path(training_args.output_dir) / "latest"
-        latest.mkdir()
+        self.latest = Path(training_args.output_dir) / "latest"
+        self.latest.mkdir()
 
-        logger.info(f"See training artifacts at {latest}")
-        trainer.save_model(latest / "model")
-        self.index_path = self.indexer.index(latest / "index", self.train_dataset["text"], gpus=True)
+        logger.info(f"See training artifacts at {self.latest}")
+        trainer.save_model(self.latest / "model")
+
+        train_subsample = self.subsample(self.train_dataset, n=self.config.final_subsample_train)
+        self.index_path = self.indexer.index(self.latest / "index", train_subsample[self.TEXT_COLUMN], gpus=True)
+        # self.train_dataset.select_columns(self.LABEL_COLUMN).to_pandas().to_feather(self.latest / "train_labels.arrow")
 
         if self.config.do_eval:
             eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
-            self.evaluate(self.train_dataset, eval_dataset, prefix="test")
-
-        if self.config.log_model_artifact:
-            self.log_dir_artifact(latest / "model", name="model", type="model")
-            self.log_dir_artifact(self.index_path, name="index", type="index")
+            self.evaluate(train_subsample, eval_dataset, prefix="test")
 
         self.finish()
 
@@ -228,7 +235,7 @@ class RerankTrainer:
             logger.warning(f"fewer elements than k={max_k} matched, filling up with (-1).")
             match_pids = torch.nn.utils.rnn.pad_sequence(match_pids, batch_first=True, padding_value=-1)
 
-        match_labels = train_dataset["label"][match_pids.tolist()]
+        match_labels = train_dataset[self.LABEL_COLUMN][match_pids.tolist()]
 
         logger.info(f"compute metrics {prefix}")
 
@@ -243,21 +250,25 @@ class RerankTrainer:
             y_pred = torch.mode(knn)[0]
             assert -1 not in y_pred, "Not enough matches"
 
-            metrics[f"{prefix}/accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset["label"])
+            metrics[f"{prefix}/accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN])
             metrics[f"{prefix}/precision/micro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="micro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
             )
             metrics[f"{prefix}/precision/macro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="macro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro", zero_division=0
             )
             metrics[f"{prefix}/recall/micro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="micro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
             )
             metrics[f"{prefix}/recall/macro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset["label"], average="macro"
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro", zero_division=0
             )
-            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset["label"], average="micro")
-            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset["label"], average="macro")
+            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
+            )
+            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro", zero_division=0
+            )
 
         logger.info(metrics)
         self.log(metrics)
@@ -266,7 +277,7 @@ class RerankTrainer:
     def build_index(self, dataset: Dataset, step: int) -> IndexPath:
         logger.info("build index")
         index_path = os.path.join(self.training_args.output_dir, f"checkpoint-{step}", "index")
-        return self.indexer.index(index_path, dataset["text"], gpus=True)
+        return self.indexer.index(index_path, dataset[self.TEXT_COLUMN], gpus=True)
 
     @profile_memory
     def search_dataset(self, dataset: Dataset, searcher: Searcher, k: int) -> Dataset:
@@ -275,7 +286,7 @@ class RerankTrainer:
         dataset.set_format(None)
         dataset = dataset.map(
             run_multiprocessed(searcher.search),
-            input_columns="text",
+            input_columns=self.TEXT_COLUMN,
             fn_kwargs={"k": k},
             batched=True,
             num_proc=torch.cuda.device_count(),
@@ -298,8 +309,8 @@ class RerankTrainer:
     ):
         logger.info("build sampling data")
         dataset.set_format(None)
-        sampling_data_builder = TripleSamplingDataBuilder(
-            dataset["label"],
+        sampling_data_builder = self.TRIPLE_SAMPLER_CLS(
+            dataset[self.LABEL_COLUMN],
             sampling_method=self.config.sampling_method,
             probability_type=self.config.probability_type,
             nway=self.config.nway,
@@ -334,14 +345,16 @@ class RerankTrainer:
         logger.info("tokenize")
         return dataset.map(
             lambda batch: self.tokenizer(batch, truncation=True),
-            input_columns="text",
-            remove_columns="text",
+            input_columns=self.TEXT_COLUMN,
+            remove_columns=self.TEXT_COLUMN,
             batched=True,
             desc="Tokenize",
         )
 
     def train_dev_split(self) -> tuple[Dataset, Dataset]:
-        train_dev_dataset = self.train_dataset.train_test_split(self.config.dev_split_size, stratify_by_column="label")
+        train_dev_dataset = self.train_dataset.train_test_split(
+            self.config.dev_split_size, stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None
+        )
         train_dataset = train_dev_dataset["train"]
         dev_dataset = train_dev_dataset["test"]
         return train_dataset, dev_dataset
@@ -349,9 +362,11 @@ class RerankTrainer:
     def subsample(self, dataset: Dataset, n: int | float | None):
         logger.info("subsample")
         if n is not None:
-            return dataset.train_test_split(train_size=n, stratify_by_column="label", load_from_cache_file=False)[
-                "train"
-            ]
+            return dataset.train_test_split(
+                train_size=n,
+                stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None,
+                load_from_cache_file=False,
+            )["train"]
         else:
             return dataset
 
@@ -386,6 +401,17 @@ class RerankTrainer:
             artifact.add_dir(dir, name=name)
             self.run.log_artifact(artifact)
 
+    def log_file_artifact(self, file: str, name, type) -> None:
+        if hasattr(self, "run"):
+            artifact = wandb.Artifact(name, type)
+            artifact.add_file(file, name=name)
+            self.run.log_artifact(artifact)
+
     def finish(self) -> None:
+        if self.config.log_model_artifact:
+            self.log_dir_artifact(self.latest / "model", name="model", type="model")
+            self.log_dir_artifact(self.index_path, name="index", type="index")
+            # self.log_file_artifact(self.latest / "train_labels.arrow", name="train_labels", type="labels")
+
         if hasattr(self, "run"):
             self.run.finish()

@@ -246,6 +246,7 @@ class TripleSamplingDataBuilder:
     def sampling_data_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
         # pids that have the same label
         positive_pids = self.pids_for_label[label]
+        positive_pids = positive_pids[positive_pids != idx]
         # pids that have different label
         negative_pids = np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l != label])
 
@@ -278,6 +279,177 @@ class TripleSamplingDataBuilder:
     ) -> dict[str, torch.LongTensor :]:
         triple = sample_triple(positive_pids, negative_pids, positive_probs, negative_probs, idx, self.nway)
         return {"triple": triple}
+
+
+class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
+    def __init__(
+        self,
+        passage_labels: Sequence[int],
+        sampling_method: SamplingMethod = "random",
+        probability_type: ProbabilityType = "uniform",
+        nway: int = 3,
+        n_positives: int | None = None,
+        n_negatives: int | None = None,
+        return_missing: bool = False,
+        positive_always_random: bool = False,
+        lower_ranked_positives: bool = False,
+        sample_triples: bool = False,
+    ) -> None:
+        assert nway >= 3, "NWay tuples have to be at least of size 3 (anchor, positive, negative)"
+        self.nway = nway
+        self.sampling_method = sampling_method
+        self.probability_type = probability_type
+        self.n_positives = n_positives or 1
+        self.n_negatives = n_negatives or nway - 2
+        self.return_missing = return_missing and sampling_method in [SamplingMethod.searched]
+        self.positive_always_random = positive_always_random
+        self.lower_ranked_positives = lower_ranked_positives
+        self.sample_triples = sample_triples
+
+        self.unique_labels = np.unique(np.concatenate(passage_labels))
+        self.num_labels = len(self.unique_labels)
+
+        if self.sampling_method == SamplingMethod.class_wise_random:
+            assert (nway - 2) % (self.num_labels - 1) == 0, "nway must be 2 + n*(num_labels-1)"
+
+        # for each class holds pids that have that class assigned as label
+        k = max([len(labels) for labels in passage_labels])
+        labels_padded = np.stack([np.pad(labels, (0, k - len(labels))) for labels in passage_labels])
+        self.pids_for_label = {l: np.where(labels_padded == l)[0] for l in self.unique_labels}
+        self.scaler = MinMaxScaler()
+
+    @property
+    def input_columns(self) -> list[str]:
+        match self.sampling_method:
+            case SamplingMethod.random:
+                return ["labels"]
+            case SamplingMethod.class_wise_random:
+                return ["labels"]
+            case SamplingMethod.searched:
+                return ["match_pids", "match_scores", "labels"]
+            case _:
+                raise NotImplementedError(f"Sampling Method {self.sampling_method} not implemented.")
+
+    def sampling_data_from_matches(
+        self,
+        match_pids: np.ndarray,
+        match_scores: np.ndarray,
+        labels: list[int],
+        idx: int | None = None,
+        *args,
+        **kwargs,
+    ) -> dict[str, np.ndarray]:
+        """Does not work batched!"""
+        match_pids = np.array(match_pids)
+        match_scores = np.array(match_scores)
+
+        pids_with_same_label = np.unique(np.concatenate([self.pids_for_label[l] for l in labels]))
+        pids_with_different_label = np.unique(
+            np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l not in labels])
+        )
+        # remove self from positive list
+        m = match_pids != idx
+        match_pids = match_pids[m]
+        match_scores = match_scores[m]
+        pids_with_same_label = pids_with_same_label[pids_with_same_label != idx]
+        same_label_mask = np.isin(match_pids, pids_with_same_label, assume_unique=True)
+
+        if not len(pids_with_same_label):
+            pids_with_same_label = np.array([idx])
+            logger.warning(f"No positive pid with labels {labels} existent.")
+
+        n_positives = min(self.n_positives, len(pids_with_same_label))
+        n_negatives = min(self.n_negatives, len(pids_with_different_label))
+
+        if self.positive_always_random:
+            positive_pids = pids_with_same_label
+            positive_scores = None
+        else:
+            # matched pids that have the same label
+            positive_pids = match_pids[same_label_mask]
+            positive_scores = match_scores[same_label_mask]
+
+        if missing_pos := max(0, n_positives - len(positive_pids)):
+            non_retrieved_positives = pids_with_same_label[
+                ~np.isin(pids_with_same_label, positive_pids, assume_unique=True)
+            ]
+            positive_fill_pids = np.random.choice(non_retrieved_positives, size=missing_pos)
+            positive_pids = np.concatenate([positive_pids, positive_fill_pids])
+            fill_scores = np.full(missing_pos, fill_value=positive_scores.min() if len(positive_scores) else 1)
+            positive_scores = np.concatenate([positive_scores, fill_scores])
+
+        # matched pids that have different label
+        negative_pids = match_pids[~same_label_mask]
+        negative_scores = match_scores[~same_label_mask]
+
+        if missing_neg := max(0, n_negatives - len(negative_pids)):
+            non_retrieved_negatives = pids_with_different_label[
+                ~np.isin(pids_with_different_label, negative_pids, assume_unique=True)
+            ]
+            negative_fill_pids = np.random.choice(non_retrieved_negatives, size=missing_neg)
+            negative_pids = np.concatenate([negative_pids, negative_fill_pids])
+            fill_scores = np.full(missing_neg, fill_value=negative_scores.min() if len(negative_scores) else 1)
+            negative_scores = np.concatenate([negative_scores, fill_scores])
+
+        match self.probability_type:
+            case "scores":
+                # use similarity scores as probabilities
+                positive_probs = positive_scores
+                negative_probs = negative_scores
+
+            case "ranks":
+                # use ranking as probabilities
+                if not self.positive_always_random:
+                    positive_probs = (
+                        np.arange(len(positive_pids), 0, -1).astype(np.float32) if len(positive_pids) > 1 else None
+                    )
+                    if self.lower_ranked_positives:
+                        positive_probs = np.flip(positive_probs)
+                negative_probs = (
+                    np.arange(len(negative_pids), 0, -1).astype(np.float32) if len(negative_pids) > 1 else None
+                )
+
+            case "uniform":
+                positive_probs = None
+                negative_probs = None
+
+            case _:
+                raise NotImplementedError(self.probability_type)
+
+        positive_probs = normalize_probs(positive_probs, self.scaler) if positive_probs is not None else None
+        negative_probs = normalize_probs(negative_probs, self.scaler) if negative_probs is not None else None
+
+        sampling_data = {
+            "positive_pids": positive_pids.tolist(),
+            "negative_pids": negative_pids.tolist(),
+            "positive_probs": positive_probs.tolist() if positive_probs is not None else None,
+            "negative_probs": negative_probs.tolist() if negative_probs is not None else None,
+        }
+
+        if self.return_missing:
+            sampling_data.update({"missing_pos": missing_pos})
+            sampling_data.update({"missing_neg": missing_neg})
+
+        return sampling_data
+
+    def sampling_data_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
+        # pids that have the same label
+        positive_pids = np.unique(np.concatenate([self.pids_for_label[l] for l in labels]))
+        positive_pids = positive_pids[positive_pids != idx]
+        # pids that have different label
+        negative_pids = np.unique(
+            np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l not in labels])
+        )
+
+        return {
+            "positive_pids": positive_pids,
+            "negative_pids": negative_pids,
+            "positive_probs": None,
+            "negative_probs": None,
+        }
+
+    def sampling_data_cw_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
+        raise NotImplementedError()
 
 
 def sample_triple(
