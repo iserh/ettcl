@@ -162,6 +162,11 @@ class TripleSamplingDataBuilder:
 
         pids_with_same_label = self.pids_for_label[label]
         pids_with_different_label = np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l != label])
+        # remove self from positive list
+        m = match_pids != idx
+        match_pids = match_pids[m]
+        match_scores = match_scores[m]
+        pids_with_same_label = pids_with_same_label[pids_with_same_label != idx]
         same_label_mask = np.isin(match_pids, pids_with_same_label, assume_unique=True)
 
         n_positives = min(self.n_positives, len(pids_with_same_label))
