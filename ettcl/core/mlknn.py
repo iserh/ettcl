@@ -1,9 +1,11 @@
+import json
+from pathlib import Path
+
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
 from ettcl.logging import trange
-from torch.nn.utils.rnn import pad_sequence
-from pathlib import Path
-import json
+
 
 def membership_counting_vector(labels: list[torch.Tensor], num_labels: int):
     mcv = torch.zeros(num_labels, dtype=torch.long)

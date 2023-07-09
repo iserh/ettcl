@@ -12,9 +12,6 @@ from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset
 from transformers import DataCollatorWithPadding
 
-from ettcl.searching import Searcher
-from ettcl.utils.multiprocessing import run_multiprocessed
-
 logger = getLogger(__name__)
 
 
@@ -72,6 +69,23 @@ class DataCollatorForTriples(DataCollatorWithPadding):
         batch = super().__call__(flattened_features)
         # unflatten batch
         batch = {k: v.view(batch_size, nway, *v.shape[1:]) for k, v in batch.items()}
+        # label = 0, first passage is the positive one
+        batch["labels"] = torch.zeros((batch_size,), dtype=torch.int64)
+
+        return batch
+
+
+class DataCollatorForSentenceTriples:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def __call__(self, features: list[list[dict[str, torch.Tensor]]]) -> dict[str, torch.Tensor]:
+        batch_size = len(features)
+        nway = len(features[0])
+        keys = features[0][0].keys()
+
+        batch = features
+        batch = {k: [[triple_item[k] for triple_item in example] for example in batch] for k in keys}
         # label = 0, first passage is the positive one
         batch["labels"] = torch.zeros((batch_size,), dtype=torch.int64)
 

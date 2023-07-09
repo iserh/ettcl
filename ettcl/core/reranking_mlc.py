@@ -1,15 +1,16 @@
+from dataclasses import dataclass
 from logging import getLogger
 
 import torch
 from datasets import Dataset
-from dataclasses import dataclass
 
-from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
-from ettcl.core.triple_sampling import TripleSamplingDataBuilderMLC
 from ettcl.core.mlc_metrics import MLCMetrics
 from ettcl.core.mlknn import MLKNN
+from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
+from ettcl.core.triple_sampling import TripleSamplingDataBuilderMLC
 
 logger = getLogger(__name__)
+
 
 @dataclass
 class RerankMLCTrainerConfig(RerankTrainerConfig):
@@ -54,6 +55,7 @@ class RerankMLCTrainer(RerankTrainer):
             metrics.update(list(batch.values()))
 
         metric_dict = metrics.compute()
+        metric_dict = {f"{prefix}/{k}": v for k, v in metric_dict.items()}
 
         if epoch is not None:
             metric_dict["train/epoch"] = epoch

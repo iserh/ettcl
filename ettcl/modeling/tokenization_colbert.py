@@ -118,6 +118,7 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
         return_attention_mask: bool | None = None,
         return_tensors: str | TensorType | None = None,
         verbose: bool = True,
+        **kwargs,
     ) -> BatchEncoding:
         if max_length is None and padding == "max_length":
             max_length = self.doc_maxlen if mode == "doc" else self.query_maxlen

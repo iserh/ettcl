@@ -58,22 +58,24 @@ class MLCMetrics:
         metrics = {}
         if self.compute_per_class_metrics:
             # build per-class metrics dict
-            metrics = metrics | {
-                label: {
-                    "precision": p[i],
-                    "recall": r[i],
-                    "f1": f[i],
-                    "confusion": {"tp": self.tp[i], "fp": self.fp[i], "tn": self.tn[i], "fn": self.fn[i]},
-                }
-                for i, label in self.h_config.id2label.items()
-            }
+            for i, label in self.h_config.id2label.items():
+                metrics[f"{label}/precision"] = p[i]
+                metrics[f"{label}/recall"] = r[i]
+                metrics[f"{label}/f1"] = f[i]
+                metrics[f"{label}/confusion/tp"] = self.tp[i]
+                metrics[f"{label}/confusion/fp"] = self.fp[i]
+                metrics[f"{label}/confusion/tn"] = self.tn[i]
+                metrics[f"{label}/confusion/fn"] = self.fn[i]
 
         # add global confusion matrix
-        metrics["confusion"] = {"tp": total_tp, "fp": total_fp, "tn": total_tn, "fn": total_fn}
+        metrics["confusion/tp"] = total_tp
+        metrics["confusion/fp"] = total_fp
+        metrics["confusion/tn"] = total_tn
+        metrics["confusion/fn"] = total_fn
 
         # compute average accuracy
-        metrics["subset_accuracy"] = self.acc / self.num_examples
-        metrics["hamming_loss"] = self.ham / (self.num_examples * self.num_labels)
+        metrics["accuracy"] = self.acc / self.num_examples
+        metrics["hamming"] = self.ham / (self.num_examples * self.num_labels)
 
         # compute average metrics
         # micro average precision and recall
@@ -81,8 +83,12 @@ class MLCMetrics:
         avg_r = total_tp / (total_tp + total_fn + 1e-5)
 
         metrics = metrics | {
-            "micro": {"precision": avg_p, "recall": avg_r, "f1": 2.0 * (avg_p * avg_r) / (avg_p + avg_r + 1e-5)},
-            "macro": {"precision": p.mean(), "recall": r.mean(), "f1": f.mean()},
+            "precision/micro": avg_p,
+            "precision/macro": p.mean(),
+            "recall/micro": avg_r,
+            "recall/macro": r.mean(),
+            "f1/micro": 2.0 * (avg_p * avg_r) / (avg_p + avg_r + 1e-5),
+            "f1/macro": f.mean(),
         }
 
         return metrics

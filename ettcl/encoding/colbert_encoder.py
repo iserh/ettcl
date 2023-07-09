@@ -76,6 +76,7 @@ class ColBERTEncoder(MultiVectorEncoder):
 
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
+        dataset.set_format("torch")
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 
@@ -85,8 +86,7 @@ class ColBERTEncoder(MultiVectorEncoder):
                 if self.use_gpu:
                     input_dict = {k: t.cuda() for k, t in input_dict.items()}
 
-                D = self.model(**input_dict)[0]
-                mask = input_dict["attention_mask"]
+                D, mask = self.model(**input_dict)[:2]
 
                 if D.is_cuda:
                     D = D.half()
@@ -127,6 +127,7 @@ class ColBERTEncoder(MultiVectorEncoder):
 
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
+        dataset.set_format("torch")
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 

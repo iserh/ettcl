@@ -245,7 +245,8 @@ class RerankTrainer:
         if step is not None:
             metrics["train/step"] = step
 
-        for k in self.config.eval_ks:
+        ks = self.config.eval_ks
+        for k in ks:
             knn = match_labels[:, :k]
             y_pred = torch.mode(knn)[0]
             assert -1 not in y_pred, "Not enough matches"
@@ -269,6 +270,14 @@ class RerankTrainer:
             metrics[f"{prefix}/f1/macro/{k}"] = f1_score(
                 y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro", zero_division=0
             )
+
+        metrics[f"{prefix}/accuracy"] = max([metrics[f"{prefix}/accuracy/{k}"] for k in ks])
+        metrics[f"{prefix}/precision/micro"] = max([metrics[f"{prefix}/precision/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/precision/macro"] = max([metrics[f"{prefix}/precision/macro/{k}"] for k in ks])
+        metrics[f"{prefix}/recall/micro"] = max([metrics[f"{prefix}/recall/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/recall/macro"] = max([metrics[f"{prefix}/recall/macro/{k}"] for k in ks])
+        metrics[f"{prefix}/f1/micro"] = max([metrics[f"{prefix}/f1/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/f1/macro"] = max([metrics[f"{prefix}/f1/macro/{k}"] for k in ks])
 
         logger.info(metrics)
         self.log(metrics)

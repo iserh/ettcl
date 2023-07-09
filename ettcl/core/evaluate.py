@@ -34,7 +34,6 @@ class EvaluatorConfig:
 
 
 class Evaluator:
-
     TEXT_COLUMN = "text"
     LABEL_COLUMN = "labels"
     CONFIG_CLS = EvaluatorConfig
@@ -55,8 +54,12 @@ class Evaluator:
         self.indexer = indexer
         self.searcher = searcher
 
-        self.train_dataset = train_dataset.rename_columns({config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN})
-        self.eval_dataset = eval_dataset.rename_columns({config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN})
+        self.train_dataset = train_dataset.rename_columns(
+            {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
+        )
+        self.eval_dataset = eval_dataset.rename_columns(
+            {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
+        )
 
         self._run_config = {}
 
@@ -98,7 +101,9 @@ class Evaluator:
 
         logger.info(f"compute metrics {prefix}")
         metrics = {}
-        for k in self.config.ks:
+
+        ks = self.config.ks
+        for k in ks:
             knn = match_labels[:, :k]
             y_pred = torch.mode(knn)[0]
             assert -1 not in y_pred, "Not enough matches"
@@ -116,8 +121,20 @@ class Evaluator:
             metrics[f"{prefix}/recall/macro/{k}"] = recall_score(
                 y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
             )
-            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro")
-            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro")
+            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
+            )
+            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(
+                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
+            )
+
+        metrics[f"{prefix}/accuracy"] = max([metrics[f"{prefix}/accuracy/{k}"] for k in ks])
+        metrics[f"{prefix}/precision/micro"] = max([metrics[f"{prefix}/precision/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/precision/macro"] = max([metrics[f"{prefix}/precision/macro/{k}"] for k in ks])
+        metrics[f"{prefix}/recall/micro"] = max([metrics[f"{prefix}/recall/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/recall/macro"] = max([metrics[f"{prefix}/recall/macro/{k}"] for k in ks])
+        metrics[f"{prefix}/f1/micro"] = max([metrics[f"{prefix}/f1/micro/{k}"] for k in ks])
+        metrics[f"{prefix}/f1/macro"] = max([metrics[f"{prefix}/f1/macro/{k}"] for k in ks])
 
         logger.info(metrics)
         self.log(metrics)
@@ -153,9 +170,11 @@ class Evaluator:
     def subsample(self, dataset: Dataset, n: int | float | None):
         logger.info("subsample")
         if n is not None:
-            return dataset.train_test_split(train_size=n, stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None, load_from_cache_file=False)[
-                "train"
-            ]
+            return dataset.train_test_split(
+                train_size=n,
+                stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None,
+                load_from_cache_file=False,
+            )["train"]
         else:
             return dataset
 

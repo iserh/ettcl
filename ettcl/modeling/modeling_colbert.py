@@ -19,16 +19,17 @@ logger = getLogger(__name__)
 
 @dataclass
 class ColbertOutputWitgCrossAttentions(ModelOutput):
-    normalized_output: torch.FloatTensor = None
-    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    normalized_output: torch.FloatTensor | None = None
+    output_mask: torch.FloatTensor | None = None
+    hidden_states: tuple[torch.FloatTensor] | None = None
 
 
 @dataclass
 class ColbertRerankingOutput(ModelOutput):
-    loss: torch.Tensor = None
-    scores: torch.Tensor = None
-    unreduced_scores: torch.Tensor = None
-    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    loss: torch.Tensor | None = None
+    scores: torch.Tensor | None = None
+    unreduced_scores: torch.Tensor | None = None
+    hidden_states: tuple[torch.FloatTensor] | None = None
 
 
 class ColBERTPreTrainedModel(PreTrainedModel):
@@ -135,6 +136,7 @@ class ColBERTModel(ColBERTPreTrainedModel):
 
         return ColbertOutputWitgCrossAttentions(
             normalized_output=normalized_output,
+            output_mask=attention_mask,
             hidden_states=encoder_outputs.hidden_states,
         )
 
@@ -174,10 +176,42 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
             return_dict=return_dict,
         )
 
-        # outputs[0] holds normalized output, shape (BATCH * (nway+1), input_length, embedding_dim)
-        embedding_dim = outputs[0].shape[-1]
+        scores, unreduced_scores = self.compute_scores(
+            sequence_output=outputs[0],
+            attention_mask=attention_mask,
+            nway=nway,
+            input_length=input_length,
+        )
+
+        loss = self.compute_loss(
+            scores=scores,
+            labels=labels,
+            target_scores=target_scores,
+            batch_size=batch_size,
+            nway=nway,
+        )
+
+        if not return_dict:
+            return (loss, scores, unreduced_scores)
+
+        return ColbertRerankingOutput(
+            loss=loss.unsqueeze(0),
+            scores=scores,
+            unreduced_scores=unreduced_scores,
+            hidden_states=outputs.hidden_states,
+        )
+
+    def compute_scores(
+        self,
+        sequence_output: torch.Tensor,
+        attention_mask: torch.Tensor,
+        nway: int,
+        input_length: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        # sequence_output holds normalized output, shape (BATCH * (nway+1), input_length, embedding_dim)
+        embedding_dim = sequence_output.shape[-1]
         # reshape to (BATCH, nway+1, input_length, embedding_dim)
-        sequence_output = outputs[0].view(-1, nway, input_length, embedding_dim)
+        sequence_output = sequence_output.view(-1, nway, input_length, embedding_dim)
         # select queries
         Q = sequence_output[:, 0]
         # select nway documents, view as (BATCH * nway, input_length, embedding_dim)
@@ -192,6 +226,16 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         # reduce these scores via `MaxSim`
         scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway - 1)
 
+        return scores, unreduced_scores
+
+    def compute_loss(
+        self,
+        scores,
+        labels: torch.Tensor | None,
+        target_scores: torch.Tensor | None,
+        batch_size: int,
+        nway: int,
+    ) -> torch.Tensor:
         if labels is None:
             # default labels <=> 0 for whole batch, which is selecting the first document as target for cross_entropy_loss
             labels = self.default_labels.broadcast_to(batch_size)
@@ -214,15 +258,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
 
         # TODO: in-batch negatives loss
 
-        if not return_dict:
-            return (loss, scores, unreduced_scores)
-
-        return ColbertRerankingOutput(
-            loss=loss.unsqueeze(0),
-            scores=scores,
-            unreduced_scores=unreduced_scores,
-            hidden_states=outputs.hidden_states,
-        )
+        return loss
 
 
 def colbert_score(Q: torch.Tensor, D: torch.Tensor) -> torch.Tensor:

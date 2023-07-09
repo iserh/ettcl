@@ -12,13 +12,13 @@ except ModuleNotFoundError:
 from datasets import Dataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
+from ettcl.core.evaluate import Evaluator, EvaluatorConfig
+from ettcl.core.mlc_metrics import MLCMetrics
+from ettcl.core.mlknn import MLKNN
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer, IndexPath
 from ettcl.searching import Searcher
 from ettcl.utils.multiprocessing import run_multiprocessed
-from ettcl.core.evaluate import Evaluator, EvaluatorConfig
-from ettcl.core.mlc_metrics import MLCMetrics
-from ettcl.core.mlknn import MLKNN
 
 logger = getLogger(__name__)
 
