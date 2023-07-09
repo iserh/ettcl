@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from datasets import Dataset, load_dataset
 from gensim.models import FastText
 from gensim.utils import simple_preprocess
@@ -35,4 +37,5 @@ print(f"{total_words=}")
 
 model.train(corpus_iterable=corpus["tokens"], total_words=total_words, total_examples=total_examples, epochs=10)
 
+Path("models/imdb").mkdir(exist_ok=True, parents=True)
 model.save("models/imdb/fasttext")

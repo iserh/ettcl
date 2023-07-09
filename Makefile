@@ -80,3 +80,5 @@ mlc-finetune-sbert:
 mlc-finetune-scolbert:
 	python scripts/multilabel/finetune_scolbert.py configs/multilabel/finetune_config_scolbert.yml
 
+train-fasttext:
+	python scripts/train_fasttext.py

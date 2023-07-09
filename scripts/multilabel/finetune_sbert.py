@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import datetime
 
 from datasets import load_from_disk
-from transformers import Trainer, TrainingArguments, AutoTokenizer
+from transformers import AutoTokenizer, Trainer, TrainingArguments
 
 from ettcl.core.reranking_mlc import RerankMLCTrainer, RerankMLCTrainerConfig
 from ettcl.encoding import STEncoder
