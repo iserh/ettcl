@@ -5,14 +5,14 @@ from dataclasses import asdict
 from datetime import datetime
 
 from datasets import load_from_disk
+from gensim.models import FastText
 
 from ettcl.core.evaluate_mlc import EvaluatorMLC, EvaluatorMLCConfig
-from ettcl.encoding import ColBERTEncoder
+from ettcl.encoding import Word2VecEncoder
 from ettcl.indexing import ColBERTIndexer, ColBERTIndexerConfig
 from ettcl.logging import configure_logger
-from ettcl.modeling import SentenceColBERTModel, SentenceTokenizer
 from ettcl.searching import ColBERTSearcher, ColBERTSearcherConfig
-from ettcl.utils import seed_everything, split_into_sentences
+from ettcl.utils import seed_everything
 
 
 def main(params: dict, log_level: str | int = "INFO") -> None:
@@ -24,7 +24,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     output_dir = os.path.join(
         "evaluation",
         os.path.basename(params["dataset"]["value"]),
-        "scolbert",
+        "fasttext",
         os.path.basename(params["model"]["value"]),
         datetime.now().isoformat(),
     )
@@ -32,9 +32,8 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
 
-    model = SentenceColBERTModel.from_pretrained(params["model"]["value"])
-    tokenizer = SentenceTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
-    encoder = ColBERTEncoder(model, tokenizer)
+    model = FastText.load(params["model"]["value"])
+    encoder = Word2VecEncoder(model)
 
     indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
     indexer = ColBERTIndexer(encoder, indexer_config)
@@ -48,23 +47,6 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]
 
-    num_sentences = params["num_sentences"]["value"]
-    train_dataset = train_dataset.map(
-        lambda text: {"sents": split_into_sentences(text, num_sentences)},
-        input_columns="text",
-        remove_columns="text",
-        desc="split_into_sentences",
-    )
-
-    test_dataset = test_dataset.map(
-        lambda text: {"sents": split_into_sentences(text, num_sentences)},
-        input_columns="text",
-        remove_columns="text",
-        desc="split_into_sentences",
-    )
-
-    config.text_column = "sents"
-
     evaluator = EvaluatorMLC(
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
@@ -76,12 +58,9 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     evaluator.run_config = {
         "dataset": params["dataset"]["value"],
-        "num_sentences": num_sentences,
-        "architecture": "S-ColBERT",
+        "architecture": "FastText",
         "model": params["model"]["value"],
         "seed": seed,
-        "model_config": model.config.to_dict(),
-        "tokenizer": tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
         "config": asdict(config),
     }
