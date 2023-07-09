@@ -54,6 +54,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         searcher_sampling = None
 
     params["training"]["value"].pop("output_dir", None)
+    params["training"]["value"].pop("seed", None)
     training_args = TrainingArguments(output_dir=output_dir, seed=seed, **params["training"]["value"])
     config = RerankMLCTrainerConfig(**params["config"]["value"])
 
@@ -93,6 +94,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     )
 
     trainer.run_config = {
+        "seed": seed,
         "dataset": params["dataset"]["value"],
         "num_sentences": num_sentences,
         "architecture": "S-ColBERT",

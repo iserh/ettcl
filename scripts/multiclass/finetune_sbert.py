@@ -46,6 +46,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     searcher = FaissSingleVectorSearcher(None, encoder)
 
     params["training"]["value"].pop("output_dir", None)
+    params["training"]["value"].pop("seed", None)
     training_args = TrainingArguments(output_dir=output_dir, seed=seed, **params["training"]["value"])
     config = RerankTrainerConfig(**params["config"]["value"])
 
@@ -67,6 +68,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     )
 
     trainer.run_config = {
+        "seed": seed,
         "dataset": params["dataset"]["value"],
         "architecture": "S-BERT",
         "model": params["model"]["value"],

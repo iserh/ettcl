@@ -84,6 +84,8 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     dev_dataset = dev_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
     test_dataset = test_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
 
+    params["training"]["value"].pop("output_dir", None)
+    params["training"]["value"].pop("seed", None)
     training_args = TrainingArguments(output_dir=output_dir, seed=seed, **params["training"]["value"])
     trainer = Trainer(
         model=model,
@@ -95,6 +97,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     )
 
     run_config = {
+        "seed": seed,
         "dataset": params["dataset"]["value"],
         "architecture": "BERT",
         "model": params["model"]["value"],

@@ -58,10 +58,10 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     )
 
     evaluator.run_config = {
+        "seed": seed,
         "dataset": params["dataset"]["value"],
         "architecture": "ColBERT",
         "model": params["model"]["value"],
-        "seed": seed,
         "model_config": model.config.to_dict(),
         "tokenizer": tokenizer.init_kwargs,
         "indexer": asdict(indexer_config),
