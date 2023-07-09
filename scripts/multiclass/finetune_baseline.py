@@ -96,7 +96,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     run_config = {
         "dataset": params["dataset"]["value"],
-        "architecture": "Baseline",
+        "architecture": "BERT",
         "model": params["model"]["value"],
         "training": training_args.to_dict(),
         "config": config,
@@ -105,7 +105,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     run = wandb.init(
         project=config["project"],
         dir=output_dir,
-        config=config,
+        config=run_config,
         save_code=True,
     )
     run.log_code(

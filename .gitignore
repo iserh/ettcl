@@ -147,3 +147,4 @@ dmypy.json
 
 
 /notebooks/dev.ipynb
+/notebooks/wandb.ipynb
