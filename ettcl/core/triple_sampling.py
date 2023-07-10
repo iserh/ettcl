@@ -452,6 +452,9 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
         # pids that have the same labels
         positive_pids = np.unique(np.concatenate([self.pids_for_label[l] for l in labels]))
         positive_pids = positive_pids[positive_pids != idx]
+        if not len(positive_pids):
+            positive_pids = np.array([idx])
+            logger.warning(f"No positive pid with labels {labels} existent.")
         # pids that have different labels
         negative_pids = np.unique(
             np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l not in labels])
