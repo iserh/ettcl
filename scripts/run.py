@@ -20,7 +20,8 @@ class Value(Generic[T]):
 class RunParams:
     dataset: Value[str]
     model: Value[str]
-    seed: Value[int] = Value(12345)
+    seed: Value[int] = field(default_factory=lambda: Value(12345))
+    num_sentences: Value[int] = field(default_factory=lambda: Value(16))
     model_config: Value[dict] = field(default_factory=lambda: Value(dict()))
     tokenizer: Value[dict] = field(default_factory=lambda: Value(dict()))
     indexer: Value[dict] = field(default_factory=lambda: Value(dict()))
@@ -57,11 +58,12 @@ if __name__ == "__main__":
     parser.add_argument("--log_level", type=str, default="INFO")
 
     # load RunParams from argparse
-    parser.add_argument("--project", type=str)
-    parser.add_argument("--dataset", type=str)
-    parser.add_argument("--model", type=str)
+    parser.add_argument("--project", type=str)  # required
+    parser.add_argument("--dataset", type=str)  # required
+    parser.add_argument("--model", type=str)  # required
 
     parser.add_argument("--seed", type=int, default=12345)
+    parser.add_argument("--num_sentences", type=int)
 
     parser.add_argument("--mconfig_compression_dim", type=int)
 
@@ -179,7 +181,6 @@ if __name__ == "__main__":
         params = RunParams(
             dataset=Value(args.dataset),
             model=Value(args.model),
-            seed=Value(args.seed),
             model_config=Value(mconfig),
             tokenizer=Value(tokenizer),
             indexer=Value(indexer),
@@ -188,6 +189,12 @@ if __name__ == "__main__":
             training=Value(training),
             config=Value(config),
         )
+
+        if args.seed is not None:
+            params.seed = Value(args.seed)
+
+        if args.num_sentences is not None:
+            params.num_sentences = Value(args.num_sentences)
 
     module_path = args.script
     module_name = "run_script"
