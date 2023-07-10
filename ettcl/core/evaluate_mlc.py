@@ -30,7 +30,7 @@ class EvaluatorMLCConfig(EvaluatorConfig):
     mlknn_s: float = 1
 
     def __post_init__(self):
-        assert len(self.ks) == 1, "Only 1 evaluation k allowed for MLC evaluation"
+        assert len(self.eval_ks) == 1, "Only 1 evaluation k allowed for MLC evaluation"
 
 
 class EvaluatorMLC(Evaluator):
@@ -44,7 +44,7 @@ class EvaluatorMLC(Evaluator):
         prefix: str = "",
     ) -> None:
         logger.info(f"evaluate {prefix}")
-        k = self.config.ks[0]
+        k = self.config.eval_ks[0]
 
         train_dataset = self.search_dataset(train_dataset, self.searcher, k=k)
         test_dataset = self.search_dataset(test_dataset, self.searcher, k=k)

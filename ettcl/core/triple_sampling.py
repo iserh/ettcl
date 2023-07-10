@@ -247,8 +247,8 @@ class TripleSamplingDataBuilder:
         sampling_data = {
             "positive_pids": positive_pids.tolist(),
             "negative_pids": negative_pids.tolist(),
-            "positive_probs": positive_probs.tolist() if positive_probs is not None else None,
-            "negative_probs": negative_probs.tolist() if negative_probs is not None else None,
+            "positive_probs": positive_probs.tolist() if positive_probs is not None else [],
+            "negative_probs": negative_probs.tolist() if negative_probs is not None else [],
         }
 
         if self.return_missing:
@@ -265,10 +265,10 @@ class TripleSamplingDataBuilder:
         negative_pids = np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l != label])
 
         return {
-            "positive_pids": positive_pids,
-            "negative_pids": negative_pids,
-            "positive_probs": None,
-            "negative_probs": None,
+            "positive_pids": positive_pids.tolist(),
+            "negative_pids": negative_pids.tolist(),
+            "positive_probs": [],
+            "negative_probs": [],
         }
 
     def sampling_data_cw_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
@@ -277,10 +277,10 @@ class TripleSamplingDataBuilder:
         negative_pids = np.concatenate([np.random.choice(self.pids_for_label[l], size=n) for l in self.unique_labels])
 
         return {
-            "positive_pids": positive_pids,
-            "negative_pids": negative_pids,
-            "positive_probs": None,
-            "negative_probs": None,
+            "positive_pids": positive_pids.tolist(),
+            "negative_pids": negative_pids.tolist(),
+            "positive_probs": [],
+            "negative_probs": [],
         }
 
     def triple_sample_from_sampling_data(
@@ -436,8 +436,8 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
         sampling_data = {
             "positive_pids": positive_pids.tolist(),
             "negative_pids": negative_pids.tolist(),
-            "positive_probs": positive_probs.tolist() if positive_probs is not None else None,
-            "negative_probs": negative_probs.tolist() if negative_probs is not None else None,
+            "positive_probs": positive_probs.tolist() if positive_probs is not None else [],
+            "negative_probs": negative_probs.tolist() if negative_probs is not None else [],
         }
 
         if self.return_missing:
@@ -458,8 +458,8 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
         return {
             "positive_pids": positive_pids,
             "negative_pids": negative_pids,
-            "positive_probs": None,
-            "negative_probs": None,
+            "positive_probs": [],
+            "negative_probs": [],
         }
 
     def sampling_data_cw_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
@@ -474,12 +474,12 @@ def sample_triple(
     idx: int,
     nway: int,
 ) -> torch.LongTensor:
-    if positive_probs is not None:
+    if len(positive_probs):
         positive_indices = positive_probs.multinomial(1)
     else:
         positive_indices = torch.randint(positive_pids.size(0), size=(1,))
 
-    if negative_probs is not None:
+    if len(negative_probs):
         negative_indices = negative_probs.multinomial(nway - 2)
     else:
         negative_indices = torch.randperm(negative_pids.size(0))[: nway - 2]

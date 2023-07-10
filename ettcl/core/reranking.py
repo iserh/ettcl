@@ -33,14 +33,14 @@ logger = getLogger(__name__)
 @dataclass
 class RerankTrainerConfig:
     project: str | None = None
-    do_dev_eval: bool = False
+    do_dev_eval: bool = True
     dev_split_size: int | float = 0.2
-    do_eval: bool = False
+    do_eval: bool = True
     eval_ks: tuple[int] = (1,)
-    resample_interval: int | None = None
+    resample_interval: int | None = 1
     eval_interval: int | None = None
-    dev_eval_interval: int | None = None
-    searcher_sampling_k: int | None = None
+    dev_eval_interval: int | None = 1
+    searcher_sampling_k: int | None = 256
     subsample_train: int | None = None
     subsample_eval: int | None = None
     final_subsample_train: int | None = None
@@ -50,12 +50,12 @@ class RerankTrainerConfig:
     freeze_base_model: bool = False
     sampling_method: SamplingMethod | str = "random"
     probability_type: ProbabilityType | str = "uniform"
-    nway: int = 2
+    nway: int = 3
     n_positives: int | None = None
     n_negatives: int | None = None
     positive_always_random: bool = False
     lower_ranked_positives: bool = False
-    log_model_artifact: bool = True
+    log_model_artifact: bool = False
     stratify_splits: bool = True
 
 

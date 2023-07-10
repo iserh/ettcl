@@ -24,7 +24,7 @@ logger = getLogger(__name__)
 class EvaluatorConfig:
     output_dir: str | os.PathLike = "evaluations"
     project: str | None = None
-    ks: tuple[int] = (1,)
+    eval_ks: tuple[int] = (1,)
     subsample_train: int | None = None
     subsample_eval: int | None = None
     label_column: str = "label"
@@ -85,7 +85,7 @@ class Evaluator:
 
     def _evaluate(self, train_dataset: Dataset, test_dataset: Dataset, prefix: str = "test") -> None:
         logger.info(f"evaluate {prefix}")
-        max_k = max(self.config.ks)
+        max_k = max(self.config.eval_ks)
 
         test_dataset = self.search_dataset(test_dataset, self.searcher, k=max_k)
 
@@ -102,7 +102,7 @@ class Evaluator:
         logger.info(f"compute metrics {prefix}")
         metrics = {}
 
-        ks = self.config.ks
+        ks = self.config.eval_ks
         for k in ks:
             knn = match_labels[:, :k]
             y_pred = torch.mode(knn)[0]
