@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+from transformers.trainer_callback import TrainerControl, TrainerState
+from transformers.training_args import TrainingArguments
 
 try:
     import wandb
@@ -13,10 +15,7 @@ except ModuleNotFoundError:
     pass
 from datasets import Dataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from transformers import PreTrainedModel, PreTrainedTokenizerBase, Trainer, TrainingArguments
-from transformers.optimization import get_scheduler
-from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-from transformers.trainer_pt_utils import get_parameter_names
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, Trainer, TrainingArguments, TrainerCallback
 
 from ettcl.core.triple_sampling import (
     DataCollatorForTriples,
@@ -32,6 +31,15 @@ from ettcl.searching import Searcher
 from ettcl.utils.multiprocessing import run_multiprocessed
 
 logger = getLogger(__name__)
+
+
+class EpochStopper(TrainerCallback):
+    def __init__(self, next_stop: int) -> None:
+        self.next_stop = next_stop
+
+    def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        if state.epoch >= self.next_stop:
+            control.should_training_stop = True
 
 
 @dataclass
@@ -126,7 +134,7 @@ class RerankTrainer:
         training_args = self.training_args
         num_train_epochs = training_args.num_train_epochs
         do_searched_sampling = self.config.sampling_method == "searched"
-        resample_interval = self.config.resample_interval or num_train_epochs
+        resample_interval = self.config.resample_interval or training_args.num_train_epochs
         dev_eval_interval = self.config.dev_eval_interval if self.config.do_dev_eval else None
 
         train_dataset = self.train_dataset
@@ -143,8 +151,8 @@ class RerankTrainer:
 
         epoch, global_step = 0, 0
         next_resample = 0
-        next_dev_eval = 0 if dev_eval_interval is not None else num_train_epochs
-        while epoch < num_train_epochs:
+        next_dev_eval = 0 if dev_eval_interval is not None else training_args.num_train_epochs
+        while epoch < training_args.num_train_epochs:
             logger.info(f"\n\n## EPOCH {epoch}\n")
 
             with memory_stats():
@@ -177,18 +185,16 @@ class RerankTrainer:
             n_params = sum([np.prod(p.size()) for p in model_parameters])
             logger.info(f"Training {n_params} parameters")
 
-            optimizer, scheduler = create_optimizer_and_scheduler(self.model, training_args, len(train_subsample))
-            training_args.num_train_epochs = min(next_resample, next_dev_eval)
             trainer = self.trainer_cls(
                 model=self.model,
                 tokenizer=self.tokenizer,
                 args=training_args,
                 train_dataset=sampling_dataset,
                 data_collator=self.data_collator,
-                optimizers=(optimizer, scheduler),
+                callbacks=[EpochStopper(min(next_resample, next_dev_eval))]
             )
 
-            logger.info(f"training epoch {epoch} - {training_args.num_train_epochs}")
+            logger.info(f"training epoch {epoch+1}/{training_args.num_train_epochs}")
             with memory_stats():
                 trainer.train(resume_from_checkpoint=(epoch > 0))  # don't resume in the first epoch
                 self.model.cpu()
@@ -430,32 +436,3 @@ class RerankTrainer:
 
         if hasattr(self, "run"):
             self.run.finish()
-
-
-def create_optimizer_and_scheduler(model: nn.Module, training_args: TrainingArguments, dataset_size: int):
-    """We need to set the number of training steps for the lr scheduler correctly, because RerankTrainer
-    is always training only one epoch at a time.
-    """
-    decay_parameters = get_parameter_names(model, ALL_LAYERNORM_LAYERS)
-    decay_parameters = [name for name in decay_parameters if "bias" not in name]
-    num_training_steps = (dataset_size // training_args.train_batch_size) * training_args.num_train_epochs
-    optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(training_args)
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if (n in decay_parameters and p.requires_grad)],
-            "weight_decay": training_args.weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if (n not in decay_parameters and p.requires_grad)],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-    scheduler = get_scheduler(
-        training_args.lr_scheduler_type,
-        optimizer,
-        training_args.get_warmup_steps(num_training_steps),
-        num_training_steps,
-    )
-
-    return optimizer, scheduler
