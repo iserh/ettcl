@@ -448,11 +448,11 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
 
         return sampling_data
 
-    def sampling_data_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
-        # pids that have the same label
+    def sampling_data_random(self, labels: list[int], idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
+        # pids that have the same labels
         positive_pids = np.unique(np.concatenate([self.pids_for_label[l] for l in labels]))
         positive_pids = positive_pids[positive_pids != idx]
-        # pids that have different label
+        # pids that have different labels
         negative_pids = np.unique(
             np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l not in labels])
         )
