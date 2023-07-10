@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from typing import TypeVar, Generic
+
 import os
+from dataclasses import asdict, dataclass, field
+from typing import Generic, TypeVar
+
 import yaml
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 @dataclass
 class Value(Generic[T]):
@@ -31,7 +34,13 @@ class RunParams:
         with open(path, "r") as fp:
             d = yaml.load(fp, yaml.SafeLoader)
 
-        return cls(**{k: Value(v) for k, v in d.items()})
+        return cls(
+            **{
+                k: Value(d[k]["value"], d[k].get("desc", None))
+                for k in cls.__dataclass_fields__.keys()
+                if d.get(k, None) is not None and d[k].get("value", None) is not None
+            }
+        )
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -96,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_do_dev_eval", type=bool)
     parser.add_argument("--config_dev_split_size", type=float)
     parser.add_argument("--config_do_eval", type=bool)
-    parser.add_argument("--config_eval_ks", type=int, nargs='+')
+    parser.add_argument("--config_eval_ks", type=int, nargs="+")
     parser.add_argument("--config_resample_interval", type=int)
     parser.add_argument("--config_eval_interval", type=int)
     parser.add_argument("--config_dev_eval_interval", type=int)
@@ -106,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_final_subsample_train", type=float)
     parser.add_argument("--config_label_column", type=str)
     parser.add_argument("--config_text_column", type=str)
-    parser.add_argument("--config_remove_columns", type=str, nargs='+')
+    parser.add_argument("--config_remove_columns", type=str, nargs="+")
     parser.add_argument("--config_freeze_base_model", type=bool)
     parser.add_argument("--config_sampling_method", type=str)
     parser.add_argument("--config_probability_type", type=str)
