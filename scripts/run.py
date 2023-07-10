@@ -76,9 +76,10 @@ if __name__ == "__main__":
     parser.add_argument("--training_save_strategy", type=str, default="epoch")
     parser.add_argument("--training_save_steps", type=int, default=1)
     parser.add_argument("--training_logging_steps", type=int, default=100)
+    parser.add_argument("--training_eval_steps", type=int)
+    parser.add_argument("--training_evaluation_strategy", type=str)
     parser.add_argument("--training_num_train_epochs", type=int, default=5)
     parser.add_argument("--training_per_device_train_batch_size", type=int, default=4)
-    parser.add_argument("--training_auto_find_batch_size", type=bool)
     parser.add_argument("--training_gradient_accumulation_steps", type=int)
 
     parser.add_argument("--indexer_nbits", type=int)

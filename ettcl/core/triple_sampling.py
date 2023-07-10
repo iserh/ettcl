@@ -252,6 +252,8 @@ class TripleSamplingDataBuilder:
         }
 
         if self.return_missing:
+            assert isinstance(missing_pos, int), "Value must be int"
+            assert isinstance(missing_neg, int), "Value must be int"
             sampling_data.update({"missing_pos": missing_pos})
             sampling_data.update({"missing_neg": missing_neg})
 

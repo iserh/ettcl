@@ -34,7 +34,7 @@ logger = getLogger(__name__)
 class RerankTrainerConfig:
     project: str | None = None
     do_dev_eval: bool = True
-    dev_split_size: int | float = 0.2
+    dev_split_size: int | float = 0.1
     do_eval: bool = True
     eval_ks: tuple[int] = (1,)
     resample_interval: int | None = 1
@@ -202,7 +202,7 @@ class RerankTrainer:
         self.latest.mkdir()
 
         logger.info(f"See training artifacts at {self.latest}")
-        trainer.save_model(self.latest / "model")
+        trainer.save_model(str(self.latest / "model"))
 
         train_subsample = self.subsample(self.train_dataset, n=self.config.final_subsample_train)
         self.index_path = self.indexer.index(self.latest / "index", train_subsample[self.TEXT_COLUMN], gpus=True)
@@ -340,13 +340,13 @@ class RerankTrainer:
         )
 
         if sampling_data_builder.return_missing:
-            missing_pos = sum(dataset["missing_pos"])
-            missing_neg = sum(dataset["missing_neg"])
+            missing_pos = sum(dataset["missing_pos"]) / len(dataset)
+            missing_neg = sum(dataset["missing_neg"]) / len(dataset)
             dataset = dataset.remove_columns(["missing_pos", "missing_neg"])
             if missing_pos:
-                logger.warning(f"Missing {missing_pos} positive matches in sampling.")
+                logger.warning(f"Missing {missing_pos:.3f} positive matches in sampling.")
             if missing_neg:
-                logger.warning(f"Missing {missing_neg} negative matches in sampling.")
+                logger.warning(f"Missing {missing_neg:.3f} negative matches in sampling.")
 
         return dataset
 
