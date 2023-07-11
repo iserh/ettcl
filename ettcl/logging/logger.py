@@ -37,9 +37,9 @@ def memory_stats() -> None:
     finally:
         for idx in range(torch.cuda.device_count()):
             try:
-                logger.info("\n" + torch.cuda.memory_summary(idx, True))
+                logger.debug("\n" + torch.cuda.memory_summary(idx, True))
             except KeyError:
-                logger.info(f"Could not print memory stats for device {idx}")
+                logger.debug(f"Could not print memory stats for device {idx}")
 
 
 def profile_memory(fn: callable) -> callable:

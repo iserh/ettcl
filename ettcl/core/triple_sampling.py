@@ -1,7 +1,7 @@
 import itertools
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum
 from logging import getLogger
 from typing import Any
 
@@ -10,98 +10,14 @@ import torch
 from datasets import Dataset
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset
-from transformers import DataCollatorWithPadding
+from transformers import DataCollatorWithPadding, PreTrainedTokenizerBase
+
+from ettcl.core.config import ProbabilityType, SamplingConfig, SamplingMethod
+from ettcl.core.search import search_dataset
+from ettcl.indexing import Indexer
+from ettcl.searching import Searcher
 
 logger = getLogger(__name__)
-
-
-class TripleLoaderDataset:
-    """Creates triples from triple indices already in dataset."""
-
-    triple_column = "triple"
-
-    def __init__(self, dataset_with_triples: Dataset) -> None:
-        self.triples = dataset_with_triples.select_columns(self.triple_column)
-        self.dataset = dataset_with_triples.remove_columns(self.triple_column)
-
-    def __len__(self) -> int:
-        return len(self.dataset)
-
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        triple = self.triples[idx]["triple"]
-        features = self.dataset[triple]
-        # unfold features
-        return [{k: v[i] for k, v in features.items()} for i in range(len(triple))]
-
-
-class TripleSamplerDataset:
-    """Samples triples online from sampling data."""
-
-    triple_columns = ["positive_pids", "negative_pids", "positive_probs", "negative_probs"]
-
-    def __init__(self, dataset_with_sampling_pids: Dataset, nway: int = 3) -> None:
-        """Requires columns `"""
-        self.sampling_data = dataset_with_sampling_pids.select_columns(self.triple_columns)
-        self.sampling_data.set_format("pt")
-        self.dataset = dataset_with_sampling_pids.remove_columns(self.triple_columns)
-        self.dataset.set_format("pt")
-        self.nway = nway
-
-    def __len__(self) -> int:
-        return len(self.dataset)
-
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        triple = sample_triple(**self.sampling_data[idx], idx=idx, nway=self.nway)
-        features = self.dataset[triple]
-        # unfold features
-        return [{k: v[i] for k, v in features.items()} for i in range(len(triple))]
-
-
-@dataclass
-class DataCollatorForTriples(DataCollatorWithPadding):
-    def __call__(self, features: list[list[dict[str, torch.Tensor]]]) -> dict[str, torch.Tensor]:
-        batch_size = len(features)
-        nway = len(features[0])
-
-        # concatenate features
-        flattened_features = list(itertools.chain(*features))
-        # default collate with padding
-        batch = super().__call__(flattened_features)
-        # unflatten batch
-        batch = {k: v.view(batch_size, nway, *v.shape[1:]) for k, v in batch.items()}
-        # label = 0, first passage is the positive one
-        batch["labels"] = torch.zeros((batch_size,), dtype=torch.int64)
-
-        return batch
-
-
-class DataCollatorForSentenceTriples:
-    def __init__(self, *args, **kwargs) -> None:
-        pass
-
-    def __call__(self, features: list[list[dict[str, torch.Tensor]]]) -> dict[str, torch.Tensor]:
-        batch_size = len(features)
-        nway = len(features[0])
-        keys = features[0][0].keys()
-
-        batch = features
-        batch = {k: [[triple_item[k] for triple_item in example] for example in batch] for k in keys}
-        # label = 0, first passage is the positive one
-        batch["labels"] = torch.zeros((batch_size,), dtype=torch.int64)
-
-        return batch
-
-
-class ProbabilityType(str, Enum):
-    scores = "scores"
-    ranks = "ranks"
-    uniform = "uniform"
-
-
-class SamplingMethod(str, Enum):
-    random = "random"
-    class_wise_random = "class_wise_random"
-    searched = "searched"
 
 
 class TripleSamplingDataBuilder:
@@ -469,6 +385,156 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
 
     def sampling_data_cw_random(self, label: int, idx: int | None = None, *args, **kwargs) -> dict[str, np.ndarray]:
         raise NotImplementedError()
+
+
+class TripleSamplerDataset:
+    """Samples triples online from sampling data."""
+
+    triple_columns = ["positive_pids", "negative_pids", "positive_probs", "negative_probs"]
+
+    def __init__(
+        self,
+        train_dataset: Dataset,
+        triples_sampler_cls: type[TripleSamplingDataBuilder | TripleSamplingDataBuilderMLC],
+        config: SamplingConfig,
+        text_column: str = "text",
+        label_column: str = "label",
+    ) -> None:
+        self.train_dataset = train_dataset
+        self.triples_sampler_cls = triples_sampler_cls
+        self.config = config
+        self.text_column = text_column
+        self.label_column = label_column
+
+    def __len__(self) -> int:
+        return len(self.dataset_processed)
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        triple = sample_triple(**self.sampling_data[idx], idx=idx, nway=self.config.nway)
+        features = self.dataset_processed[triple]
+        # unfold features
+        return [{k: v[i] for k, v in features.items()} for i in range(len(triple))]
+
+    def resample(
+        self,
+        indexer: Indexer,
+        searcher: Searcher,
+        tokenizer: PreTrainedTokenizerBase,
+        subsample_size: int | None,
+        stratify: bool,
+        index_path: str,
+    ) -> None:
+        # necessary so that reserved memory is freed and can be used by multiprocesses
+        torch.cuda.empty_cache()
+
+        logger.info("subsampling train dataset")
+        train_subsample = subsample(self.train_dataset, subsample_size, stratify, self.label_column)
+
+        logger.info("build index")
+        indexer.index(index_path, train_subsample[self.text_column], gpus=True)
+
+        if self.config.sampling_method == "searched":
+            train_subsample = search_dataset(
+                train_subsample,
+                searcher,
+                index_path,
+                self.config.searcher_sampling_k,
+                self.text_column,
+                report_stats=True,
+            )
+
+        train_subsample.save_to_disk(os.path.join(index_path, "index_dataset"))
+
+        dataset_with_sampling_pids = self.build_sampling_data(train_subsample)
+        dataset_with_sampling_pids = self.tokenize(dataset_with_sampling_pids, tokenizer)
+
+        self.sampling_data = dataset_with_sampling_pids.select_columns(self.triple_columns)
+        self.sampling_data.set_format("pt")
+        self.dataset_processed = dataset_with_sampling_pids.remove_columns(self.triple_columns)
+        self.dataset_processed.set_format("pt")
+
+    def build_sampling_data(
+        self,
+        dataset: Dataset,
+    ):
+        logger.info("build sampling data")
+
+        dataset.set_format(None)
+        sampling_data_builder = self.triples_sampler_cls(
+            dataset[self.label_column],
+            sampling_method=self.config.sampling_method,
+            probability_type=self.config.probability_type,
+            nway=self.config.nway,
+            n_positives=self.config.n_positives,
+            n_negatives=self.config.n_negatives,
+            return_missing=True,
+            positive_always_random=self.config.positive_always_random,
+            lower_ranked_positives=self.config.lower_ranked_positives,
+        )
+
+        dataset = dataset.map(
+            sampling_data_builder,
+            input_columns=sampling_data_builder.input_columns,
+            with_indices=True,
+            remove_columns=sampling_data_builder.input_columns,
+            desc="Sampling",
+            load_from_cache_file=False,
+        )
+
+        if sampling_data_builder.return_missing:
+            missing_pos = sum(dataset["missing_pos"]) / len(dataset)
+            missing_neg = sum(dataset["missing_neg"]) / len(dataset)
+            dataset = dataset.remove_columns(["missing_pos", "missing_neg"])
+            if missing_pos:
+                logger.warning(f"Missing {missing_pos:.3f} positive matches in sampling.")
+            if missing_neg:
+                logger.warning(f"Missing {missing_neg:.3f} negative matches in sampling.")
+
+        return dataset
+
+    def tokenize(self, dataset: Dataset, tokenizer) -> Dataset:
+        logger.info("tokenize")
+
+        return dataset.map(
+            lambda batch: tokenizer(batch, truncation=True),
+            input_columns=self.text_column,
+            remove_columns=self.text_column,
+            batched=True,
+            load_from_cache_file=False,
+            desc="Tokenize",
+        )
+
+
+@dataclass
+class DataCollatorForTriples(DataCollatorWithPadding):
+    def __call__(self, features: list[list[dict[str, torch.Tensor]]]) -> dict[str, torch.Tensor]:
+        batch_size = len(features)
+        nway = len(features[0])
+
+        # concatenate features
+        flattened_features = list(itertools.chain(*features))
+        # default collate with padding
+        batch = super().__call__(flattened_features)
+        # unflatten batch
+        batch = {k: v.view(batch_size, nway, *v.shape[1:]) for k, v in batch.items()}
+        # label = 0, first passage is the positive one
+        batch["labels"] = torch.zeros((batch_size,), dtype=torch.int64)
+
+        return batch
+
+
+def subsample(dataset: Dataset, size: int | float | None, stratify: bool = True, label_column: str = "label"):
+    logger.info(f"subsample fac={size} from {len(dataset)}")
+
+    if size is not None:
+        return dataset.train_test_split(
+            train_size=size,
+            stratify_by_column=label_column if stratify else None,
+            load_from_cache_file=False,
+        )["train"]
+
+    else:
+        return dataset
 
 
 def sample_triple(

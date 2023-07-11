@@ -1,66 +1,54 @@
-from dataclasses import dataclass
+import functools
 from logging import getLogger
 
-import torch
 from datasets import Dataset
+from torch.utils.data import Dataset
+from transformers import PreTrainedModel, PreTrainedTokenizerBase, TrainingArguments
+from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.training_args import TrainingArguments
 
-from ettcl.core.mlc_metrics import MLCMetrics
-from ettcl.core.mlknn import MLKNN
-from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
+from ettcl.core.config import RerankMLCTrainerConfig, RerankTrainerConfig
+from ettcl.core.evaluate_mlc import evaluate_mlc
+from ettcl.core.reranking import RerankTrainer
 from ettcl.core.triple_sampling import TripleSamplingDataBuilderMLC
+from ettcl.encoding import Encoder
+from ettcl.indexing import Indexer
+from ettcl.searching import Searcher
 
 logger = getLogger(__name__)
 
 
-@dataclass
-class RerankMLCTrainerConfig(RerankTrainerConfig):
-    label_column: str = "labels"
-    stratify_splits: bool = False
-    mlknn_s: float = 1
-
-    def __post_init__(self):
-        assert len(self.eval_ks) == 1, "Only 1 evaluation k allowed for MLC evaluation"
-
-
 class RerankMLCTrainer(RerankTrainer):
-    LABEL_COLUMN = "labels"
-    CONFIG_CLS = RerankMLCTrainerConfig
-    TRIPLE_SAMPLER_CLS = TripleSamplingDataBuilderMLC
+    config_cls = RerankMLCTrainerConfig
+    label_column = "labels"
+    triples_sampler_cls = TripleSamplingDataBuilderMLC
+    evaluate_fn = staticmethod(evaluate_mlc)
 
-    def evaluate(
+    def __init__(
         self,
+        model: PreTrainedModel,
+        encoder: Encoder,
+        tokenizer: PreTrainedTokenizerBase,
+        config: RerankTrainerConfig,
+        training_args: TrainingArguments,
         train_dataset: Dataset,
-        test_dataset: Dataset,
-        epoch: int | None = None,
-        step: int | None = None,
-        prefix: str = "",
+        indexer: Indexer,
+        searcher_eval: Searcher | None = None,
+        eval_dataset: Dataset | None = None,
+        searcher_sampling: Searcher | None = None,
     ) -> None:
-        logger.info(f"evaluate {prefix}")
-        k = self.config.eval_ks[0]
-
-        train_dataset = self.search_dataset(train_dataset, self.searcher_eval, k=k)
-        test_dataset = self.search_dataset(test_dataset, self.searcher_eval, k=k)
-
-        train_dataset.set_format("pt")
-        test_dataset.set_format("pt")
-
-        self.mlknn = MLKNN(train_dataset["match_pids"], train_dataset[self.LABEL_COLUMN], k=k, s=self.config.mlknn_s)
-        self.mlknn.train()
-
-        logger.info(f"compute metrics {prefix}")
-        metrics = MLCMetrics(self.mlknn.num_labels)
-        test_dataset = test_dataset.map(lambda pids: {"preds": self.mlknn.predict(pids)}, input_columns=["match_pids"])
-
-        for batch in test_dataset.select_columns(["preds", self.LABEL_COLUMN]).iter(32):
-            metrics.update(list(batch.values()))
-
-        metric_dict = metrics.compute()
-        metric_dict = {f"{prefix}/{k}": v for k, v in metric_dict.items()}
-
-        if epoch is not None:
-            metric_dict["train/epoch"] = epoch
-        if step is not None:
-            metric_dict["train/step"] = step
-
-        logger.info(metric_dict)
-        self.log(metric_dict)
+        super().__init__(
+            model,
+            encoder,
+            tokenizer,
+            config,
+            training_args,
+            train_dataset,
+            indexer,
+            searcher_eval,
+            eval_dataset,
+            searcher_sampling,
+        )
+        self.config: RerankMLCTrainerConfig = self.config
+        self.evaluate_fn = functools.partial(self.evaluate_fn, mlknn_s=self.config.mlknn_s)

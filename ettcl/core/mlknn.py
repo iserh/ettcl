@@ -21,7 +21,7 @@ class MLKNN(object):
 
         self.y_train = pad_sequence(y_train, batch_first=True, padding_value=-1)
         # self.y_train = y_train
-        self.num_labels = torch.cat(y_train).max() + 1
+        self.num_labels = int(torch.cat(y_train).max() + 1)
         self.num_examples = len(y_train)
         self.k = k
         self.s = s
@@ -63,6 +63,7 @@ class MLKNN(object):
 
     def save(self, path: str) -> None:
         path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
 
         torch.save(self.prior, path / "prior.pt")
         torch.save(self.posterior, path / "posterior.pt")

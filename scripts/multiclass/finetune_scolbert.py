@@ -5,7 +5,7 @@ from dataclasses import asdict
 from datetime import datetime
 
 from datasets import load_dataset
-from transformers import Trainer, TrainingArguments
+from transformers import TrainingArguments
 
 from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
 from ettcl.encoding import ColBERTEncoder
@@ -79,7 +79,6 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     config.text_column = "sents"
 
     trainer = RerankTrainer(
-        trainer_cls=Trainer,
         model=model,
         encoder=encoder,
         tokenizer=tokenizer,

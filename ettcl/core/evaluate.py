@@ -1,5 +1,4 @@
 import os
-from dataclasses import dataclass
 from logging import getLogger
 from pathlib import Path
 
@@ -12,31 +11,101 @@ except ModuleNotFoundError:
 from datasets import Dataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
+from ettcl.core.config import EvaluatorConfig
+from ettcl.core.search import search_dataset
+from ettcl.core.triple_sampling import subsample
 from ettcl.encoding import Encoder
-from ettcl.indexing import Indexer, IndexPath
+from ettcl.indexing import Indexer
 from ettcl.searching import Searcher
-from ettcl.utils.multiprocessing import run_multiprocessed
 
 logger = getLogger(__name__)
 
 
-@dataclass
-class EvaluatorConfig:
-    output_dir: str | os.PathLike = "evaluations"
-    project: str | None = None
-    eval_ks: tuple[int] = (1,)
-    subsample_train: int | None = None
-    subsample_eval: int | None = None
-    label_column: str = "label"
-    text_column: str = "text"
-    prefix: str = "test"
-    stratify_splits: bool = True
+def evaluate(
+    eval_dataset: Dataset,
+    index_dataset: Dataset,
+    searcher: Searcher,
+    index_path: str,
+    ks: list[int],
+    epoch: int | None = None,
+    global_step: int | None = None,
+    metric_key_prefix: str = "eval",
+    text_column: str = "text",
+    label_column: str = "label",
+) -> dict[str, float]:
+    max_k = max(ks)
+
+    eval_dataset = search_dataset(
+        eval_dataset, searcher, index_path, k=max_k, text_column=text_column, report_stats=True
+    )
+
+    eval_dataset.set_format("torch")
+    index_dataset.set_format("torch")
+
+    index_labels = index_dataset[label_column]
+
+    match_pids = eval_dataset["match_pids"]
+    if isinstance(match_pids, list):
+        logger.warning(f"fewer elements than k={max_k} matched, filling up with (-1).")
+        match_pids = torch.nn.utils.rnn.pad_sequence(match_pids, batch_first=True, padding_value=-1)
+
+    match_labels = index_labels[match_pids.tolist()]
+    match_labels[match_pids == -1] = -1
+
+    logger.info(f"compute metrics {metric_key_prefix}")
+
+    metrics = {}
+    if epoch is not None:
+        metrics["train/epoch"] = epoch
+
+    if global_step is not None:
+        metrics["train/global_step"] = global_step
+
+    for k in ks:
+        knn = match_labels[:, :k]
+        y_pred = torch.mode(knn)[0]
+        assert -1 not in y_pred, "Not enough matches"
+
+        metrics[f"{metric_key_prefix}_accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=eval_dataset[label_column])
+        metrics[f"{metric_key_prefix}_precision/micro/{k}"] = precision_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="micro"
+        )
+        metrics[f"{metric_key_prefix}_precision/macro/{k}"] = precision_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="macro", zero_division=0
+        )
+        metrics[f"{metric_key_prefix}_recall/micro/{k}"] = recall_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="micro"
+        )
+        metrics[f"{metric_key_prefix}_recall/macro/{k}"] = recall_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="macro", zero_division=0
+        )
+        metrics[f"{metric_key_prefix}_f1/micro/{k}"] = f1_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="micro"
+        )
+        metrics[f"{metric_key_prefix}_f1/macro/{k}"] = f1_score(
+            y_pred=y_pred, y_true=eval_dataset[label_column], average="macro", zero_division=0
+        )
+
+    metrics[f"{metric_key_prefix}_accuracy"] = max([metrics[f"{metric_key_prefix}_accuracy/{k}"] for k in ks])
+    metrics[f"{metric_key_prefix}_precision/micro"] = max(
+        [metrics[f"{metric_key_prefix}_precision/micro/{k}"] for k in ks]
+    )
+    metrics[f"{metric_key_prefix}_precision/macro"] = max(
+        [metrics[f"{metric_key_prefix}_precision/macro/{k}"] for k in ks]
+    )
+    metrics[f"{metric_key_prefix}_recall/micro"] = max([metrics[f"{metric_key_prefix}_recall/micro/{k}"] for k in ks])
+    metrics[f"{metric_key_prefix}_recall/macro"] = max([metrics[f"{metric_key_prefix}_recall/macro/{k}"] for k in ks])
+    metrics[f"{metric_key_prefix}_f1/micro"] = max([metrics[f"{metric_key_prefix}_f1/micro/{k}"] for k in ks])
+    metrics[f"{metric_key_prefix}_f1/macro"] = max([metrics[f"{metric_key_prefix}_f1/macro/{k}"] for k in ks])
+
+    return metrics
 
 
 class Evaluator:
-    TEXT_COLUMN = "text"
-    LABEL_COLUMN = "labels"
-    CONFIG_CLS = EvaluatorConfig
+    config_cls = EvaluatorConfig
+    text_column = "text"
+    label_column = "label"
+    evaluate_fn = staticmethod(evaluate)
 
     def __init__(
         self,
@@ -55,10 +124,10 @@ class Evaluator:
         self.searcher = searcher
 
         self.train_dataset = train_dataset.rename_columns(
-            {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
+            {config.text_column: self.text_column, config.label_column: self.label_column}
         )
         self.eval_dataset = eval_dataset.rename_columns(
-            {config.text_column: self.TEXT_COLUMN, config.label_column: self.LABEL_COLUMN}
+            {config.text_column: self.text_column, config.label_column: self.label_column}
         )
 
         self._run_config = {}
@@ -74,109 +143,35 @@ class Evaluator:
     def evaluate(self) -> None:
         self.init_wandb()
 
-        train_dataset = self.subsample(self.train_dataset, self.config.subsample_train)
-        eval_dataset = self.subsample(self.eval_dataset, self.config.subsample_eval)
+        train_dataset = subsample(
+            self.train_dataset, self.config.subsample_train, self.config.stratify_splits, self.label_column
+        )
+        eval_dataset = subsample(
+            self.eval_dataset, self.config.subsample_eval, self.config.stratify_splits, self.label_column
+        )
 
-        self.index_path = self.build_index(train_dataset)
+        logger.info("build index")
+        index_path = os.path.join(self.config.output_dir, "index_eval")
+        self.indexer.index(index_path, train_dataset[self.text_column], gpus=True)
 
-        self._evaluate(train_dataset, eval_dataset, prefix=self.config.prefix)
+        logger.info(f"compute metrics")
+        metrics = self.evaluate_fn(
+            eval_dataset=eval_dataset,
+            index_dataset=train_dataset,
+            searcher=self.searcher,
+            index_path=index_path,
+            ks=self.config.eval_ks,
+            metric_key_prefix=self.config.prefix,
+            text_column=self.text_column,
+            label_column=self.label_column,
+        )
 
-        self.finish()
-
-    def _evaluate(self, train_dataset: Dataset, test_dataset: Dataset, prefix: str = "test") -> None:
-        logger.info(f"evaluate {prefix}")
-        max_k = max(self.config.eval_ks)
-
-        test_dataset = self.search_dataset(test_dataset, self.searcher, k=max_k)
-
-        train_dataset.set_format("pt")
-        test_dataset.set_format("pt")
-
-        match_pids = test_dataset["match_pids"]
-        if isinstance(match_pids, list):
-            logger.warning(f"fewer elements than k={max_k} matched, filling up with (-1).")
-            match_pids = torch.nn.utils.rnn.pad_sequence(match_pids, batch_first=True, padding_value=-1)
-
-        match_labels = train_dataset[self.LABEL_COLUMN][match_pids.tolist()]
-
-        logger.info(f"compute metrics {prefix}")
-        metrics = {}
-
-        ks = self.config.eval_ks
-        for k in ks:
-            knn = match_labels[:, :k]
-            y_pred = torch.mode(knn)[0]
-            assert -1 not in y_pred, "Not enough matches"
-
-            metrics[f"{prefix}/accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN])
-            metrics[f"{prefix}/precision/micro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
-            )
-            metrics[f"{prefix}/precision/macro/{k}"] = precision_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
-            )
-            metrics[f"{prefix}/recall/micro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
-            )
-            metrics[f"{prefix}/recall/macro/{k}"] = recall_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
-            )
-            metrics[f"{prefix}/f1/micro/{k}"] = f1_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="micro"
-            )
-            metrics[f"{prefix}/f1/macro/{k}"] = f1_score(
-                y_pred=y_pred, y_true=test_dataset[self.LABEL_COLUMN], average="macro"
-            )
-
-        metrics[f"{prefix}/accuracy"] = max([metrics[f"{prefix}/accuracy/{k}"] for k in ks])
-        metrics[f"{prefix}/precision/micro"] = max([metrics[f"{prefix}/precision/micro/{k}"] for k in ks])
-        metrics[f"{prefix}/precision/macro"] = max([metrics[f"{prefix}/precision/macro/{k}"] for k in ks])
-        metrics[f"{prefix}/recall/micro"] = max([metrics[f"{prefix}/recall/micro/{k}"] for k in ks])
-        metrics[f"{prefix}/recall/macro"] = max([metrics[f"{prefix}/recall/macro/{k}"] for k in ks])
-        metrics[f"{prefix}/f1/micro"] = max([metrics[f"{prefix}/f1/micro/{k}"] for k in ks])
-        metrics[f"{prefix}/f1/macro"] = max([metrics[f"{prefix}/f1/macro/{k}"] for k in ks])
+        metrics = {k.replace(f"{self.config.prefix}_", f"{self.config.prefix}/"): v for k, v in metrics.items()}
 
         logger.info(metrics)
         self.log(metrics)
 
-    def build_index(self, dataset: Dataset) -> IndexPath:
-        logger.info("build index")
-        index_path = os.path.join(self.config.output_dir, "index_eval")
-        return self.indexer.index(index_path, dataset[self.TEXT_COLUMN], gpus=True)
-
-    def search_dataset(self, dataset: Dataset, searcher: Searcher, k: int) -> Dataset:
-        logger.info("search dataset")
-        searcher.index_path = self.index_path
-        dataset.set_format(None)
-        dataset = dataset.map(
-            run_multiprocessed(searcher.search),
-            input_columns=self.TEXT_COLUMN,
-            fn_kwargs={"k": k},
-            batched=True,
-            num_proc=torch.cuda.device_count(),
-            with_rank=True,
-            desc="Searching",
-        )
-
-        # log some statistics about how many matches were found
-        dataset.set_format("numpy")
-        dataset = dataset.map(lambda pids: {"len_": len(pids)}, input_columns="match_pids")
-        avg_matches = dataset["len_"].mean()
-        dataset = dataset.remove_columns("len_")
-        logger.info(f"average #matches: {avg_matches}")
-
-        return dataset
-
-    def subsample(self, dataset: Dataset, n: int | float | None):
-        logger.info("subsample")
-        if n is not None:
-            return dataset.train_test_split(
-                train_size=n,
-                stratify_by_column=self.LABEL_COLUMN if self.config.stratify_splits else None,
-                load_from_cache_file=False,
-            )["train"]
-        else:
-            return dataset
+        self.finish()
 
     def init_wandb(self) -> None:
         logger.info("init wandb")
