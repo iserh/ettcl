@@ -39,7 +39,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
     indexer = ColBERTIndexer(encoder, indexer_config)
 
-    searcher_config = ColBERTSearcherConfig(**params["searcher"]["value"])
+    searcher_config = ColBERTSearcherConfig(**params["searcher_eval"]["value"])
     searcher = ColBERTSearcher(None, encoder, searcher_config)
 
     config = EvaluatorMLCConfig(output_dir, **params["config"]["value"])

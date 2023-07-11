@@ -407,7 +407,7 @@ class TripleSamplerDataset:
         self.label_column = label_column
 
     def __len__(self) -> int:
-        return len(self.dataset_processed)
+        return len(self.sampling_data)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         triple = sample_triple(**self.sampling_data[idx], idx=idx, nway=self.config.nway)

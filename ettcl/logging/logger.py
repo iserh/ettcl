@@ -29,7 +29,10 @@ def configure_logger(log_level: int | str) -> None:
 @contextmanager
 def memory_stats() -> None:
     for idx in range(torch.cuda.device_count()):
-        torch.cuda.reset_peak_memory_stats(idx)
+        try:
+            torch.cuda.reset_peak_memory_stats(idx)
+        except RuntimeError:
+            pass
 
     try:
         yield
