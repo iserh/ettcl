@@ -27,8 +27,6 @@ def evaluate(
     searcher: Searcher,
     index_path: str,
     ks: list[int],
-    epoch: int | None = None,
-    global_step: int | None = None,
     metric_key_prefix: str = "eval",
     text_column: str = "text",
     label_column: str = "label",
@@ -55,11 +53,6 @@ def evaluate(
     logger.info(f"compute metrics {metric_key_prefix}")
 
     metrics = {}
-    if epoch is not None:
-        metrics["train/epoch"] = epoch
-
-    if global_step is not None:
-        metrics["train/global_step"] = global_step
 
     for k in ks:
         knn = match_labels[:, :k]

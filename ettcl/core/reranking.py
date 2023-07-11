@@ -152,8 +152,6 @@ class TrainerWithEvaluation(Trainer):
             searcher=self.searcher,
             index_path=index_path,
             ks=self.eval_ks,
-            epoch=self.state.epoch,
-            global_step=self.state.global_step,
             metric_key_prefix=metric_key_prefix,
             text_column=self.text_column,
             label_column=self.label_column,

@@ -23,8 +23,6 @@ def evaluate_mlc(
     index_path: str,
     ks: list[int],
     mlknn_s: float = 1,
-    epoch: int | None = None,
-    global_step: int | None = None,
     metric_key_prefix: str = "eval",
     text_column: str = "text",
     label_column: str = "label",
@@ -54,12 +52,6 @@ def evaluate_mlc(
 
     metric_dict = metrics.compute()
     metric_dict = {f"{metric_key_prefix}_{k}": v for k, v in metric_dict.items()}
-
-    if epoch is not None:
-        metric_dict["train/epoch"] = epoch
-
-    if global_step is not None:
-        metric_dict["train/global_step"] = global_step
 
     return metric_dict
 
