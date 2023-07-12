@@ -272,6 +272,7 @@ class RerankTrainer:
             callbacks=[resample_callback],
             evaluate_fn=self.evaluate_fn,
             searcher=self.searcher_eval,
+            eval_ks=self.config.eval_ks,
             text_column=self.text_column,
             label_column=self.label_column,
         )
