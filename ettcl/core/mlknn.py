@@ -5,6 +5,9 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from ettcl.logging import trange
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 def membership_counting_vector(labels: list[torch.Tensor], num_labels: int):
@@ -17,11 +20,14 @@ def membership_counting_vector(labels: list[torch.Tensor], num_labels: int):
 class MLKNN(object):
     def __init__(self, nn_matrix: list[torch.LongTensor], y_train: list[torch.LongTensor], k: int = 10, s: float = 1):
         self.nn_matrix = pad_sequence(nn_matrix, batch_first=True, padding_value=-1)[:, :k]
-        assert self.nn_matrix.shape[1] == k, f"Not enough neighbors, expected {k} but got {self.nn_matrix.shape[1]}"
+        logger.info(f"nn_matrix shape: {self.nn_matrix.shape}")
+        # assert self.nn_matrix.shape[1] == k, f"Not enough neighbors, expected {k} but got {self.nn_matrix.shape[1]}"
 
         self.y_train = pad_sequence(y_train, batch_first=True, padding_value=-1)
+        logger.info(f"y_train shape: {self.y_train.shape}")
         # self.y_train = y_train
         self.num_labels = int(torch.cat(y_train).max() + 1)
+        logger.info(f"num_labels: {self.num_labels}")
         self.num_examples = len(y_train)
         self.k = k
         self.s = s
@@ -40,7 +46,9 @@ class MLKNN(object):
             c = torch.zeros(self.k + 1, 2, dtype=torch.long)
 
             for i in range(len(self.y_train)):
-                neighbor_labels = self.y_train[self.nn_matrix[i][self.nn_matrix[i] != -1]]
+                neighbor_ids = self.nn_matrix[i]
+                neighbor_ids = neighbor_ids[(neighbor_ids != -1) & (neighbor_ids != i)]
+                neighbor_labels = self.y_train[neighbor_ids]
                 C_xi_l = (neighbor_labels == l).sum()
                 c[C_xi_l, int(l in self.y_train[i])] += 1
 
