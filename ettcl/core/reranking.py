@@ -146,6 +146,10 @@ class TrainerWithEvaluation(Trainer):
         logger.info(f"evaluate {metric_key_prefix}")
         self._memory_tracker.start()
 
+        device = self.model.device
+        self.model.cpu()
+        torch.cuda.empty_cache()
+
         metrics = self.evaluate_fn(
             eval_dataset=eval_dataset,
             index_dataset=index_dataset,
@@ -156,6 +160,8 @@ class TrainerWithEvaluation(Trainer):
             text_column=self.text_column,
             label_column=self.label_column,
         )
+
+        self.model.to(device)
 
         self.log(metrics)
 
@@ -281,6 +287,8 @@ class RerankTrainer:
         with memory_stats():
             trainer.train()
 
+        logger.info("Moving model to cpu and clearing cache.")
+        self.model.cpu()
         torch.cuda.empty_cache()
 
         # cleanup
