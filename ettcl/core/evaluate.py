@@ -169,7 +169,7 @@ class Evaluator:
     def init_wandb(self) -> None:
         logger.info("init wandb")
         output_dir = Path(self.config.output_dir)
-        output_dir.mkdir(parents=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
         try:
             self.run = wandb.init(
                 project=self.config.project,

@@ -42,18 +42,20 @@ class MLKNN(object):
         self.prior[:, 0] = 1 - self.prior[:, 1]
 
         # compute posterior, TODO: avoid for loop?
-        for l in trange(self.num_labels, desc="ML-kNN (posterior)", disable=not progress_bar):
-            c = torch.zeros(self.k + 1, 2, dtype=torch.long)
+        c = torch.zeros(self.num_labels, self.k + 1, 2, dtype=torch.long)
+        for i in trange(len(self.y_train), desc="ML-kNN (posterior)", disable=not progress_bar):
+            neighbor_ids = self.nn_matrix[i]
+            neighbor_ids = neighbor_ids[(neighbor_ids != -1) & (neighbor_ids != i)]
+            neighbor_labels = self.y_train[neighbor_ids]
+            neighbor_labels = neighbor_labels[neighbor_labels != -1]
 
-            for i in range(len(self.y_train)):
-                neighbor_ids = self.nn_matrix[i]
-                neighbor_ids = neighbor_ids[(neighbor_ids != -1) & (neighbor_ids != i)]
-                neighbor_labels = self.y_train[neighbor_ids]
-                C_xi_l = (neighbor_labels == l).sum()
-                c[C_xi_l, int(l in self.y_train[i])] += 1
+            labels, counts = neighbor_labels.unique(return_counts=True)
+            has_label = torch.isin(labels, self.y_train[i], assume_unique=True)
 
-            self.posterior[l, :, 1] = (self.s + c[:, 1]) / (self.s * (self.k + 1) + c[:, 1].sum())
-            self.posterior[l, :, 0] = (self.s + c[:, 0]) / (self.s * (self.k + 1) + c[:, 0].sum())
+            c[labels, counts, has_label.int()] += 1
+
+        self.posterior[..., 1] = (self.s + c[..., 1]) / (self.s * (self.k + 1) + c[..., 1].sum())
+        self.posterior[..., 0] = (self.s + c[..., 0]) / (self.s * (self.k + 1) + c[..., 0].sum())
 
     def predict(self, neighbor_ids: torch.LongTensor) -> torch.LongTensor:
         """Predict single example based on neighbors."""

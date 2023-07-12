@@ -35,14 +35,14 @@ def evaluate_mlc(
             index_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True
         )
 
-    eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
-
     index_dataset.set_format("pt")
-    eval_dataset.set_format("pt")
 
     mlknn = MLKNN(index_dataset["match_pids"], index_dataset[label_column], k=k, s=mlknn_s)
     mlknn.train()
     mlknn.save(os.path.join(index_path, "mlknn"))
+
+    eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
+    eval_dataset.set_format("pt")
 
     metrics = MLCMetrics(mlknn.num_labels)
     eval_dataset = eval_dataset.map(lambda pids: {"preds": mlknn.predict(pids)}, input_columns=["match_pids"])
