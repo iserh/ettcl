@@ -32,8 +32,8 @@ def AmazonCat_13K() -> DatasetDict:
     label2id = {k: i for i, k in enumerate(c.keys())}
     # id2label = {i: k for k, i in label2id.items()}
 
-    train_dataset = train_dataset.map(lambda labels: {"labels": [label2id[t] for t in labels]}, input_columns='labels')
-    test_dataset = test_dataset.map(lambda labels: {"labels": [label2id[t] for t in labels]}, input_columns='labels')
+    train_dataset = train_dataset.map(lambda labels: {"labels": list({label2id[t] for t in labels})}, input_columns='labels')
+    test_dataset = test_dataset.map(lambda labels: {"labels": list({label2id[t] for t in labels})}, input_columns='labels')
 
     train_dataset = train_dataset.filter(len, input_columns="labels")
     test_dataset = test_dataset.filter(len, input_columns="labels")
