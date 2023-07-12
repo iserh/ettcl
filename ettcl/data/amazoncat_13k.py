@@ -1,4 +1,6 @@
 from datasets import DatasetDict, load_dataset
+from collections import Counter
+from itertools import chain
 
 
 def AmazonCat_13K() -> DatasetDict:
@@ -11,7 +13,32 @@ def AmazonCat_13K() -> DatasetDict:
     dataset = dataset.remove_columns(["title", "text"])
     dataset = dataset.rename_column("titletext", "text")
 
-    return dataset
+    train_dataset = dataset["train"]
+    test_dataset = dataset["test"]
+
+    c = Counter(chain(*map(lambda feat: feat['labels'], train_dataset)))
+    c = {k: v for k, v in c.items() if v >= 20}
+
+    train_dataset = train_dataset.map(
+        lambda labels: {"labels": [t for t in labels if t in c.keys()]},
+        input_columns="labels"
+    )
+
+    test_dataset = test_dataset.map(
+        lambda labels: {"labels": [t for t in labels if t in c.keys()]},
+        input_columns="labels"
+    )
+
+    label2id = {k: i for i, k in enumerate(c.keys())}
+    # id2label = {i: k for k, i in label2id.items()}
+
+    train_dataset = train_dataset.map(lambda labels: {"labels": [label2id[t] for t in labels]}, input_columns='labels')
+    test_dataset = test_dataset.map(lambda labels: {"labels": [label2id[t] for t in labels]}, input_columns='labels')
+
+    train_dataset = train_dataset.filter(len, input_columns="labels")
+    test_dataset = test_dataset.filter(len, input_columns="labels")
+
+    return DatasetDict({"train": train_dataset, "test": test_dataset})
 
 
 if __name__ == "__main__":

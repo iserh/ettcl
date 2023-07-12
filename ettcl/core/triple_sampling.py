@@ -477,6 +477,7 @@ class TripleSamplerDataset:
             input_columns=sampling_data_builder.input_columns,
             with_indices=True,
             remove_columns=sampling_data_builder.input_columns,
+            num_proc=16,
             desc="Sampling",
             load_from_cache_file=False,
         )
