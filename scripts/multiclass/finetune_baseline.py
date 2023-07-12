@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -50,9 +49,6 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         / os.path.basename(params["model"]["value"])
         / datetime.now().isoformat()
     )
-
-    if os.path.exists(output_dir):
-        shutil.rmtree(output_dir)
 
     output_dir.mkdir(exist_ok=True, parents=True)
 

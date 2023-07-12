@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os
-import shutil
 from dataclasses import asdict
 from datetime import datetime
 
@@ -28,9 +27,6 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         os.path.basename(params["model"]["value"]),
         datetime.now().isoformat(),
     )
-
-    if os.path.exists(output_dir):
-        shutil.rmtree(output_dir)
 
     model = FastText.load(params["model"]["value"])
     encoder = Word2VecEncoder(model)
