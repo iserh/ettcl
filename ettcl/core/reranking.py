@@ -280,6 +280,8 @@ class RerankTrainer:
         with memory_stats():
             trainer.train()
 
+        torch.cuda.empty_cache()
+
         # cleanup
         for path in os.listdir(self.training_args.output_dir):
             index_path_to_delete = os.path.join(self.training_args.output_dir, path, "index")
