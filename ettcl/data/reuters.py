@@ -1,39 +1,54 @@
-import nltk
-import pandas as pd
-from datasets import Dataset, DatasetDict
-from nltk.corpus import reuters
+from datasets import load_dataset, DatasetDict
+from itertools import chain
+from collections import Counter
 
 
-def Reuters():
-    nltk.download("reuters")
+def Reuters(multilabel: bool = True):
+    reuters_train = load_dataset('reuters21578', 'ModApte', split='train')
+    reuters_train = reuters_train.select_columns(['topics', 'text'])
+    reuters_test = load_dataset('reuters21578', 'ModApte', split='test')
+    reuters_test = reuters_test.select_columns(['topics', 'text'])
 
-    # Extract fileids from the reuters corpus
-    fileids = reuters.fileids()
+    c = Counter(chain(*map(lambda feat: feat['topics'], reuters_train)))
+    c = {k: v for k, v in c.items() if v >= 10}
 
-    # Initialize empty lists to store categories and raw text
-    labels = []
-    text = []
+    reuters_train = reuters_train.map(
+        lambda topics: {"topics": [t for t in topics if t in c.keys()]},
+        input_columns="topics"
+    )
 
-    # Loop through each file id and collect each files categories and raw text
-    for file in fileids:
-        labels.append(reuters.categories(file))
-        text.append(reuters.raw(file))
+    reuters_test = reuters_test.map(
+        lambda topics: {"topics": [t for t in topics if t in c.keys()]},
+        input_columns="topics"
+    )
 
-    # Combine lists into pandas dataframe. reutersDf is the final dataframe.
-    reutersDf = pd.DataFrame({"ids": fileids, "labels_text": labels, "text": text})
-    reutersDf["split"] = reutersDf.apply(lambda row: row["ids"].split("/")[0], axis=1)
+    label2id = {k: i for i, k in enumerate(c.keys())}
+    # id2label = {i: k for k, i in label2id.items()}
 
-    labels = np.unique(np.concatenate(reutersDf["labels_text"]))
-    label2id = {label: i for i, label in enumerate(labels)}
-    reutersDf["labels"] = reutersDf.apply(lambda row: [label2id[l] for l in row["labels_text"]], axis=1)
+    reuters_train = reuters_train.map(lambda topics: {"labels": [label2id[t] for t in topics]}, input_columns='topics')
+    reuters_test = reuters_test.map(lambda topics: {"labels": [label2id[t] for t in topics]}, input_columns='topics')
 
-    train_dataset = Dataset.from_pandas(reutersDf[reutersDf["split"] == "training"][["labels_text", "labels", "text"]])
-    test_dataset = Dataset.from_pandas(reutersDf[reutersDf["split"] == "test"][["labels_text", "labels", "text"]])
-    dataset = DatasetDict({"train": train_dataset, "test": test_dataset})
+    reuters_train = reuters_train.filter(len, input_columns="labels")
+    reuters_test = reuters_test.filter(len, input_columns="labels")
 
-    return dataset
+    if not multilabel:
+        reuters_train = reuters_train.filter(lambda labels: len(labels) == 1, input_columns="labels")
+        reuters_train = reuters_train.map(
+            lambda labels, topics: {'label': labels[0], 'topic': topics[0]},
+            input_columns=['labels', 'topics'],
+            remove_columns=['labels', 'topics'],
+        )
+
+        reuters_test = reuters_test.filter(lambda labels: len(labels) == 1, input_columns="labels")
+        reuters_test = reuters_test.map(
+            lambda labels, topics: {'label': labels[0], 'topic': topics[0]},
+            input_columns=['labels', 'topics'],
+            remove_columns=['labels', 'topics'],
+        )
+
+    return DatasetDict({"train": reuters_train, "test": reuters_test})
 
 
 if __name__ == "__main__":
-    dataset = Reuters()
-    dataset.save_to_disk("data/Reuters")
+    dataset = Reuters(multilabel=False)
+    dataset.save_to_disk("data/ReutersMCC")
