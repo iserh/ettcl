@@ -25,10 +25,10 @@ def Reuters(mlc: bool = True):
     # id2label = {i: k for k, i in label2id.items()}
 
     train_dataset = train_dataset.map(
-        lambda topics: {"labels": list({label2id[t] for t in topics})}, input_columns="topics"
+        lambda topics: {"labels": list({label2id[t] for t in topics})}, input_columns="topics", remove_columns="topics"
     )
     test_dataset = test_dataset.map(
-        lambda topics: {"labels": list({label2id[t] for t in topics})}, input_columns="topics"
+        lambda topics: {"labels": list({label2id[t] for t in topics})}, input_columns="topics", remove_columns="topics"
     )
 
     train_dataset = train_dataset.filter(len, input_columns="labels")
@@ -37,16 +37,16 @@ def Reuters(mlc: bool = True):
     if not mlc:
         train_dataset = train_dataset.filter(lambda labels: len(labels) == 1, input_columns="labels")
         train_dataset = train_dataset.map(
-            lambda labels, topics: {"label": labels[0], "topic": topics[0]},
-            input_columns=["labels", "topics"],
-            remove_columns=["labels", "topics"],
+            lambda labels: {"label": labels[0]},
+            input_columns="labels",
+            remove_columns="labels",
         )
 
         test_dataset = test_dataset.filter(lambda labels: len(labels) == 1, input_columns="labels")
         test_dataset = test_dataset.map(
-            lambda labels, topics: {"label": labels[0], "topic": topics[0]},
-            input_columns=["labels", "topics"],
-            remove_columns=["labels", "topics"],
+            lambda labels: {"label": labels[0]},
+            input_columns=["labels"],
+            remove_columns=["labels"],
         )
 
         c = count_labels(train_dataset, "label", multilabel=False)
