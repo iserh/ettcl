@@ -33,29 +33,27 @@ class MLKNN(object):
         self.s = s
 
     def train(self, progress_bar: bool = True):
-        self.prior = torch.zeros(self.num_labels, 2)
-        self.posterior = torch.zeros(self.num_labels, self.k + 1, 2)
-
         # compute prior
+        self.prior = torch.zeros(self.num_labels, 2)
         cnt = membership_counting_vector(self.y_train, self.num_labels)
         self.prior[:, 1] = (self.s + cnt) / (self.s * 2 + self.num_examples)
         self.prior[:, 0] = 1 - self.prior[:, 1]
 
-        # compute posterior, TODO: avoid for loop?
+        # compute posterior
+        self.posterior = torch.zeros(self.num_labels, self.k + 1, 2)
+        labels = torch.arange(self.num_labels)
         c = torch.zeros(self.num_labels, self.k + 1, 2, dtype=torch.long)
         for i in trange(len(self.y_train), desc="ML-kNN (posterior)", disable=not progress_bar):
-            neighbor_ids = self.nn_matrix[i]
-            neighbor_ids = neighbor_ids[(neighbor_ids != -1) & (neighbor_ids != i)]
+            neighbor_ids = self.nn_matrix[i][self.nn_matrix[i] != -1]
             neighbor_labels = self.y_train[neighbor_ids]
             neighbor_labels = neighbor_labels[neighbor_labels != -1]
 
-            labels, counts = neighbor_labels.unique(return_counts=True)
-            has_label = torch.isin(labels, self.y_train[i], assume_unique=True)
+            cnt = membership_counting_vector(neighbor_labels, self.num_labels)
+            label_mask = torch.isin(labels, self.y_train[i], assume_unique=True)
+            c[labels, cnt, label_mask.int()] += 1
 
-            c[labels, counts, has_label.int()] += 1
-
-        self.posterior[..., 1] = (self.s + c[..., 1]) / (self.s * (self.k + 1) + c[..., 1].sum())
-        self.posterior[..., 0] = (self.s + c[..., 0]) / (self.s * (self.k + 1) + c[..., 0].sum())
+        self.posterior[..., 1] = (self.s + c[..., 1]) / (self.s * (self.k + 1) + c[..., 1].sum(1, keepdim=True))
+        self.posterior[..., 0] = (self.s + c[..., 0]) / (self.s * (self.k + 1) + c[..., 0].sum(1, keepdim=True))
 
     def predict(self, neighbor_ids: torch.LongTensor) -> torch.LongTensor:
         """Predict single example based on neighbors."""
