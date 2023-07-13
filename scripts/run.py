@@ -154,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_stratify_splits", type=str2bool)
     parser.add_argument("--config_prefix", type=str)
     parser.add_argument("--config_mlknn_s", type=float)
+    parser.add_argument("--config_mlknn_k", type=int)
 
     args = parser.parse_args()
 
