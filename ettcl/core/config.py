@@ -53,9 +53,7 @@ class RerankMLCTrainerConfig(RerankTrainerConfig):
     label_column: str = "labels"
     stratify_splits: bool = False
     mlknn_s: float = 1
-
-    def __post_init__(self):
-        assert len(self.eval_ks) == 1, "Only 1 evaluation k allowed for MLC evaluation"
+    mlknn_k: int = 10
 
 
 @dataclass
@@ -76,6 +74,4 @@ class EvaluatorMLCConfig(EvaluatorConfig):
     label_column: str = "labels"
     stratify_splits: bool = False
     mlknn_s: float = 1
-
-    def __post_init__(self):
-        assert len(self.eval_ks) == 1, "Only 1 evaluation k allowed for MLC evaluation"
+    mlknn_k: int = 10

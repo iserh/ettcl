@@ -51,4 +51,4 @@ class RerankMLCTrainer(RerankTrainer):
             searcher_sampling,
         )
         self.config: RerankMLCTrainerConfig = self.config
-        self.evaluate_fn = functools.partial(self.evaluate_fn, mlknn_s=self.config.mlknn_s)
+        self.evaluate_fn = functools.partial(self.evaluate_fn, mlknn_s=self.config.mlknn_s, mlknn_k=self.config.mlknn_k)

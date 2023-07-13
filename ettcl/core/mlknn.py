@@ -62,12 +62,18 @@ class MLKNN(object):
         neighbor_labels = neighbor_labels[neighbor_labels != -1]
 
         C_t_l = membership_counting_vector(neighbor_labels, self.num_labels)
-        y_multihot = (
-            self.prior[:, 1] * self.posterior[range(len(C_t_l)), C_t_l, 1]
-            > self.prior[:, 0] * self.posterior[range(len(C_t_l)), C_t_l, 0]
-        )
+        y_t_1 = self.prior[:, 1] * self.posterior[range(len(C_t_l)), C_t_l, 1]
+        y_t_0 = self.prior[:, 0] * self.posterior[range(len(C_t_l)), C_t_l, 0]
+        y_multihot = y_t_1 >= y_t_0
+        r = y_t_1 / (y_t_0 + y_t_1)
 
-        return torch.where(y_multihot)[0]
+        preds = torch.where(y_multihot)[0]
+        ranks = r[preds]
+
+        ranks, sort_indices = ranks.sort()
+        preds = preds[sort_indices]
+
+        return preds, ranks
 
     def save(self, path: str) -> None:
         path = Path(path)
