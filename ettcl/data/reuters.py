@@ -1,7 +1,7 @@
 from datasets import DatasetDict, load_dataset
 
 from ettcl.data.utils import count_labels, train_split
-from datasets import ClassLabel
+from datasets import ClassLabel, Sequence
 
 
 def Reuters(mlc: bool = True):
@@ -33,6 +33,14 @@ def Reuters(mlc: bool = True):
 
     train_dataset = train_dataset.filter(len, input_columns="labels")
     test_dataset = test_dataset.filter(len, input_columns="labels")
+
+    new_features = train_dataset.features.copy()
+    new_features["labels"] = Sequence(ClassLabel(len(c.keys())))
+    train_dataset = train_dataset.cast(new_features)
+
+    new_features = train_dataset.features.copy()
+    new_features["labels"] = Sequence(ClassLabel(len(c.keys())))
+    train_dataset = train_dataset.cast(new_features)
 
     if not mlc:
         train_dataset = train_dataset.filter(lambda labels: len(labels) == 1, input_columns="labels")
