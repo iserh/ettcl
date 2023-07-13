@@ -52,5 +52,5 @@ def Reuters(multilabel: bool = True):
 
 
 if __name__ == "__main__":
-    dataset = Reuters(multilabel=False)
-    dataset.save_to_disk("data/ReutersMCC")
+    dataset = Reuters(multilabel=True)
+    dataset.save_to_disk("data/ReutersMLC")
