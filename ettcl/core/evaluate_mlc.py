@@ -12,6 +12,7 @@ from ettcl.core.search import search_dataset
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer
 from ettcl.searching import Searcher
+from ettcl.data.utils import count_labels
 
 logger = getLogger(__name__)
 
@@ -42,9 +43,10 @@ def evaluate_mlc(
     mlknn.save(os.path.join(index_path, "mlknn"))
 
     eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
-    eval_dataset.set_format("pt")
+    num_labels = count_labels(eval_dataset, label_column, multilabel=True)
 
-    metrics = MLCMetrics(mlknn.num_labels)
+    eval_dataset.set_format("pt")
+    metrics = MLCMetrics(num_labels)
     eval_dataset = eval_dataset.map(lambda pids: {"preds": mlknn.predict(pids)}, input_columns=["match_pids"])
 
     for batch in eval_dataset.select_columns(["preds", label_column]).iter(32):

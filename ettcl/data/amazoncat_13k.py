@@ -1,6 +1,5 @@
 from datasets import DatasetDict, load_dataset
-from collections import Counter
-from itertools import chain
+from ettcl.data.utils import count_labels
 
 
 def AmazonCat_13K() -> DatasetDict:
@@ -16,7 +15,7 @@ def AmazonCat_13K() -> DatasetDict:
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]
 
-    c = Counter(chain(*map(lambda feat: feat['labels'], train_dataset)))
+    c = count_labels(train_dataset, 'labels', multilabel=True)
     c = {k: v for k, v in c.items() if v >= 20}
 
     train_dataset = train_dataset.map(

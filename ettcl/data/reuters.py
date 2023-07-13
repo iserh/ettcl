@@ -1,6 +1,5 @@
 from datasets import load_dataset, DatasetDict
-from itertools import chain
-from collections import Counter
+from ettcl.data.utils import count_labels
 
 
 def Reuters(multilabel: bool = True):
@@ -9,7 +8,7 @@ def Reuters(multilabel: bool = True):
     test_dataset = load_dataset('reuters21578', 'ModApte', split='test')
     test_dataset = test_dataset.select_columns(['topics', 'text'])
 
-    c = Counter(chain(*map(lambda feat: feat['topics'], train_dataset)))
+    c = count_labels(train_dataset, 'topics', multilabel=True)
     c = {k: v for k, v in c.items() if v >= 10}
 
     train_dataset = train_dataset.map(
