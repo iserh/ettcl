@@ -3,7 +3,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from datasets import load_dataset
+from datasets import load_from_disk
 from sentence_transformers import SentenceTransformer
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
@@ -38,8 +38,9 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     config = EvaluatorConfig(output_dir, **params["config"]["value"])
 
-    train_dataset = load_dataset(params["dataset"]["value"], split="train")
-    test_dataset = load_dataset(params["dataset"]["value"], split="test")
+    dataset = load_from_disk(params["dataset"]["value"])
+    train_dataset = dataset["train"]
+    test_dataset = dataset["test"]
 
     evaluator = Evaluator(
         train_dataset=train_dataset,

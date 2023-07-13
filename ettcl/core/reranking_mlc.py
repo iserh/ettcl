@@ -35,6 +35,7 @@ class RerankMLCTrainer(RerankTrainer):
         train_dataset: Dataset,
         indexer: Indexer,
         searcher_eval: Searcher | None = None,
+        val_dataset: Dataset | None = None,
         eval_dataset: Dataset | None = None,
         searcher_sampling: Searcher | None = None,
     ) -> None:
@@ -47,6 +48,7 @@ class RerankMLCTrainer(RerankTrainer):
             train_dataset,
             indexer,
             searcher_eval,
+            val_dataset,
             eval_dataset,
             searcher_sampling,
         )

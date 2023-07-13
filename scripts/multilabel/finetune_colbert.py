@@ -56,6 +56,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     dataset = load_from_disk(params["dataset"]["value"])
     train_dataset = dataset["train"]
+    val_dataset = dataset["validation"]
     test_dataset = dataset["test"]
 
     trainer = RerankMLCTrainer(
@@ -65,6 +66,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         config=config,
         training_args=training_args,
         train_dataset=train_dataset,
+        val_dataset=val_dataset,
         eval_dataset=test_dataset if config.do_eval else None,
         indexer=indexer,
         searcher_eval=searcher_eval,

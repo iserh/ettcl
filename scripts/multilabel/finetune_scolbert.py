@@ -56,10 +56,18 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     dataset = load_from_disk(params["dataset"]["value"])
     train_dataset = dataset["train"]
+    val_dataset = dataset["validation"]
     test_dataset = dataset["test"]
 
     num_sentences = params["num_sentences"]["value"]
     train_dataset = train_dataset.map(
+        lambda text: {"sents": split_into_sentences(text, num_sentences)},
+        input_columns="text",
+        remove_columns="text",
+        desc="split_into_sentences",
+    )
+
+    val_dataset = val_dataset.map(
         lambda text: {"sents": split_into_sentences(text, num_sentences)},
         input_columns="text",
         remove_columns="text",
@@ -82,6 +90,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         config=config,
         training_args=training_args,
         train_dataset=train_dataset,
+        val_dataset=val_dataset,
         eval_dataset=test_dataset if config.do_eval else None,
         indexer=indexer,
         searcher_eval=searcher_eval,

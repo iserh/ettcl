@@ -100,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--training_logging_steps", type=int, default=100)
     parser.add_argument("--training_eval_steps", type=int, default=1)
     parser.add_argument("--training_evaluation_strategy", type=str, default="epoch")
+    parser.add_argument("--training_warmup_ratio", type=float, default=0.01)
     parser.add_argument("--training_load_best_model_at_end", type=str2bool, default=True)
     parser.add_argument("--training_metric_for_best_model", type=str, default="f1/micro")
     parser.add_argument("--training_num_train_epochs", type=int, default=5)

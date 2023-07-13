@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import wandb
-from datasets import load_dataset
+from datasets import load_from_disk
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from transformers import (
     AutoModelForSequenceClassification,
@@ -52,21 +52,21 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    train_dataset = load_dataset(params["dataset"]["value"], split="train")
-    test_dataset = load_dataset(params["dataset"]["value"], split="test")
+    dataset = load_from_disk(params["dataset"]["value"])
+    train_dataset = dataset["train"]
+    val_dataset = dataset["validation"]
+    test_dataset = dataset["test"]
 
     train_dataset = train_dataset.rename_columns({config["text_column"]: "text", config["label_column"]: "label"})
+    val_dataset = val_dataset.rename_columns({config["text_column"]: "text", config["label_column"]: "label"})
     test_dataset = test_dataset.rename_columns({config["text_column"]: "text", config["label_column"]: "label"})
     if "remove_columns" in config:
         train_dataset = train_dataset.remove_columns(config["remove_columns"])
+        val_dataset = val_dataset.remove_columns(config["remove_columns"])
         test_dataset = test_dataset.remove_columns(config["remove_columns"])
 
-    train_dev_dataset = train_dataset.train_test_split(config["dev_split_size"], stratify_by_column="label")
-    train_dataset = train_dev_dataset["train"]
-    dev_dataset = train_dev_dataset["test"]
-
     train_dataset.set_format("torch")
-    dev_dataset.set_format("torch")
+    val_dataset.set_format("torch")
     test_dataset.set_format("torch")
 
     num_labels = len(train_dataset["label"].unique())
@@ -77,7 +77,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     tokenizer = AutoTokenizer.from_pretrained(params["model"]["value"])
 
     train_dataset = train_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
-    dev_dataset = dev_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
+    val_dataset = val_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
     test_dataset = test_dataset.map(lambda batch: tokenizer(batch["text"], truncation=True), batched=True)
 
     params["training"]["value"].pop("output_dir", None)
@@ -88,7 +88,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         args=training_args,
         tokenizer=tokenizer,
         train_dataset=train_dataset,
-        eval_dataset=dev_dataset,
+        eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
     )
 

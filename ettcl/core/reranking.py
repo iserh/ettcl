@@ -188,6 +188,7 @@ class RerankTrainer:
         train_dataset: Dataset,
         indexer: Indexer,
         searcher_eval: Searcher | None = None,
+        val_dataset: Dataset | None = None,
         eval_dataset: Dataset | None = None,
         searcher_sampling: Searcher | None = None,
     ) -> None:
@@ -211,6 +212,15 @@ class RerankTrainer:
             {config.text_column: self.text_column, config.label_column: self.label_column}
         )
 
+        self.val_dataset = val_dataset
+        if self.val_dataset is not None:
+            self.val_dataset = self.val_dataset.remove_columns(self.config.remove_columns)
+            self.val_dataset = self.val_dataset.rename_columns(
+                {config.text_column: self.text_column, config.label_column: self.label_column}
+            )
+        else:
+            self.config.do_dev_eval = False
+
         self.eval_dataset = eval_dataset
         if self.eval_dataset is not None:
             self.eval_dataset = eval_dataset.remove_columns(self.config.remove_columns)
@@ -226,18 +236,14 @@ class RerankTrainer:
     def train(self) -> None:
         self.init_wandb()
 
+        logger.info(f"train_dataset size: {len(self.train_dataset)*(self.config.subsample_train or 1)}")
         if self.config.do_dev_eval:
-            train_dataset, dev_dataset = self.train_dev_split()
-            logger.info(f"dev_dataset size: {len(dev_dataset)}")
-        else:
-            train_dataset = self.train_dataset
-
-        logger.info(f"train_dataset size: {len(train_dataset)*(self.config.subsample_train or 1)}")
+            logger.info(f"dev_dataset size: {len(self.val_dataset)}")
         if self.config.do_eval:
             logger.info(f"eval_dataset size: {len(self.eval_dataset)*(self.config.subsample_eval or 1)}")
 
         sampling_dataset = TripleSamplerDataset(
-            train_dataset=train_dataset,
+            train_dataset=self.train_dataset,
             triples_sampler_cls=self.triples_sampler_cls,
             config=self.config,
             text_column=self.config.text_column,
@@ -273,7 +279,7 @@ class RerankTrainer:
             tokenizer=self.tokenizer,
             args=self.training_args,
             train_dataset=sampling_dataset,
-            eval_dataset=dev_dataset if self.config.do_dev_eval else None,
+            eval_dataset=self.val_dataset if self.config.do_dev_eval else None,
             data_collator=self.data_collator,
             callbacks=[resample_callback],
             evaluate_fn=self.evaluate_fn,
@@ -313,14 +319,6 @@ class RerankTrainer:
             logger.info(metrics)
 
         self.finish()
-
-    def train_dev_split(self) -> tuple[Dataset, Dataset]:
-        train_dev_dataset = self.train_dataset.train_test_split(
-            self.config.dev_split_size, stratify_by_column=self.label_column if self.config.stratify_splits else None
-        )
-        train_dataset = train_dev_dataset["train"]
-        dev_dataset = train_dev_dataset["test"]
-        return train_dataset, dev_dataset
 
     # *** wandb stuff ***
 

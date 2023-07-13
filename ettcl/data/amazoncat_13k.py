@@ -1,6 +1,6 @@
 from datasets import DatasetDict, load_dataset
 
-from ettcl.data.utils import count_labels
+from ettcl.data.utils import count_labels, train_split
 
 
 def AmazonCat_13K() -> DatasetDict:
@@ -40,9 +40,11 @@ def AmazonCat_13K() -> DatasetDict:
     train_dataset = train_dataset.filter(len, input_columns="labels")
     test_dataset = test_dataset.filter(len, input_columns="labels")
 
-    return DatasetDict({"train": train_dataset, "test": test_dataset})
+    train_dataset, val_dataset = train_split(train_dataset, size=5_000)
+
+    return DatasetDict({"train": train_dataset, "validation": val_dataset, "test": test_dataset})
 
 
 if __name__ == "__main__":
     dataset = AmazonCat_13K()
-    dataset.save_to_disk("data/AmazonCat-13K")
+    dataset.save_to_disk("~/data/AmazonCat-13K")

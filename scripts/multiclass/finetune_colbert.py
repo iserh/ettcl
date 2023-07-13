@@ -3,7 +3,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from datasets import load_dataset
+from datasets import load_from_disk
 from transformers import TrainingArguments
 
 from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
@@ -54,8 +54,10 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     training_args = TrainingArguments(output_dir=output_dir, seed=seed, **params["training"]["value"])
     config = RerankTrainerConfig(**params["config"]["value"])
 
-    train_dataset = load_dataset(params["dataset"]["value"], split="train")
-    test_dataset = load_dataset(params["dataset"]["value"], split="test") if config.do_eval else None
+    dataset = load_from_disk(params["dataset"]["value"])
+    train_dataset = dataset["train"]
+    val_dataset = dataset["validation"]
+    test_dataset = dataset["test"]
 
     trainer = RerankTrainer(
         model=model,
@@ -64,6 +66,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         config=config,
         training_args=training_args,
         train_dataset=train_dataset,
+        val_dataset=val_dataset,
         eval_dataset=test_dataset,
         indexer=indexer,
         searcher_eval=searcher_eval,
