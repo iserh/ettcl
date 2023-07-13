@@ -45,7 +45,7 @@ def evaluate_mlc(
     eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
     num_labels_test = max(chain(*map(lambda feat: feat[label_column], eval_dataset))) + 1
     logger.info(f"num_labels_test: {num_labels_test}")
-    num_labels = max(mlknn.num_examples, num_labels_test)
+    num_labels = max(mlknn.num_labels, num_labels_test)
     logger.info(f"num_labels: {num_labels}")
 
     eval_dataset.set_format("pt")
