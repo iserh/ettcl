@@ -61,11 +61,14 @@ def str2bool(v):
 
 if __name__ == "__main__":
     import importlib
-    from argparse import ArgumentParser
     import warnings
+    from argparse import ArgumentParser
 
-    warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown")
-
+    warnings.filterwarnings(
+        "ignore",
+        category=UserWarning,
+        message="resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
+    )
 
     parser = ArgumentParser()
     parser.add_argument("script", type=str)

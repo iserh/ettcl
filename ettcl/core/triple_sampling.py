@@ -163,8 +163,12 @@ class TripleSamplingDataBuilder:
         sampling_data = {
             "positive_pids": positive_pids.tolist(),
             "negative_pids": negative_pids.tolist(),
-            "positive_probs": positive_probs.tolist() if positive_probs is not None else np.ones_like(positive_pids, dtype=np.float32).tolist(),
-            "negative_probs": negative_probs.tolist() if negative_probs is not None else np.ones_like(negative_pids, dtype=np.float32).tolist(),
+            "positive_probs": positive_probs.tolist()
+            if positive_probs is not None
+            else np.ones_like(positive_pids, dtype=np.float32).tolist(),
+            "negative_probs": negative_probs.tolist()
+            if negative_probs is not None
+            else np.ones_like(negative_pids, dtype=np.float32).tolist(),
         }
 
         if self.return_missing:
@@ -354,8 +358,12 @@ class TripleSamplingDataBuilderMLC(TripleSamplingDataBuilder):
         sampling_data = {
             "positive_pids": positive_pids.tolist(),
             "negative_pids": negative_pids.tolist(),
-            "positive_probs": positive_probs.tolist() if positive_probs is not None else np.ones_like(positive_pids, dtype=np.float32).tolist(),
-            "negative_probs": negative_probs.tolist() if negative_probs is not None else np.ones_like(negative_pids, dtype=np.float32).tolist(),
+            "positive_probs": positive_probs.tolist()
+            if positive_probs is not None
+            else np.ones_like(positive_pids, dtype=np.float32).tolist(),
+            "negative_probs": negative_probs.tolist()
+            if negative_probs is not None
+            else np.ones_like(negative_pids, dtype=np.float32).tolist(),
         }
 
         if self.return_missing:

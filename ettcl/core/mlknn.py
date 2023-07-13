@@ -1,11 +1,11 @@
 import json
+from logging import getLogger
 from pathlib import Path
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from ettcl.logging import trange
-from logging import getLogger
 
 logger = getLogger(__name__)
 

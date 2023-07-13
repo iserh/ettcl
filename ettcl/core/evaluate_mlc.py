@@ -9,10 +9,10 @@ from ettcl.core.evaluate import Evaluator
 from ettcl.core.mlc_metrics import MLCMetrics
 from ettcl.core.mlknn import MLKNN
 from ettcl.core.search import search_dataset
+from ettcl.data.utils import count_labels
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer
 from ettcl.searching import Searcher
-from ettcl.data.utils import count_labels
 
 logger = getLogger(__name__)
 
