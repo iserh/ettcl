@@ -43,7 +43,7 @@ def evaluate_mlc(
     mlknn.save(os.path.join(index_path, "mlknn"))
 
     eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
-    num_labels = count_labels(eval_dataset, label_column, multilabel=True)
+    num_labels = len(count_labels(eval_dataset, label_column, multilabel=True).keys())
 
     eval_dataset.set_format("pt")
     metrics = MLCMetrics(num_labels)
