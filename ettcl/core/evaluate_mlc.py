@@ -9,10 +9,10 @@ from ettcl.core.evaluate import Evaluator
 from ettcl.core.mlc_metrics import MLCMetrics
 from ettcl.core.mlknn import MLKNN
 from ettcl.core.search import search_dataset
-from ettcl.data.utils import count_labels
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer
 from ettcl.searching import Searcher
+from itertools import chain
 
 logger = getLogger(__name__)
 
@@ -43,7 +43,8 @@ def evaluate_mlc(
     mlknn.save(os.path.join(index_path, "mlknn"))
 
     eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=k, text_column=text_column, report_stats=True)
-    num_labels = len(count_labels(eval_dataset, label_column, multilabel=True).keys())
+    num_labels_test = max(chain(*map(lambda feat: feat[label_column], eval_dataset))) + 1
+    num_labels = max(mlknn.num_examples, num_labels_test)
 
     eval_dataset.set_format("pt")
     metrics = MLCMetrics(num_labels)
