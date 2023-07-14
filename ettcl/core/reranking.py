@@ -342,8 +342,9 @@ class RerankTrainer:
         torch.cuda.empty_cache()
 
         # cleanup
-        if os.path.exists(self.training_args.output_dir, "index_latest"):
-            shutil.rmtree(self.training_args.output_dir, "index_latest")
+        latest_index = os.path.join(self.training_args.output_dir, "index_latest")
+        if os.path.exists(latest_index):
+            shutil.rmtree(latest_index)
 
         best_index = os.path.join(self.training_args.output_dir, "index_best")
         train_subsample = subsample(
