@@ -103,7 +103,7 @@ class ResampleCallback(TrainerCallback):
 
         if should_rebuild_index:
             logger.info("build index")
-            index_path = os.path.join(args.output_dir, f"checkpoint-{state.global_step}", "index")
+            index_path = os.path.join(args.output_dir, "index_latest")
             self.indexer.index(index_path, train_dataset[self.config.text_column], gpus=True)
             train_dataset.save_to_disk(os.path.join(index_path, "index_dataset"))
 
@@ -171,7 +171,7 @@ class TrainerWithEvaluation(Trainer):
             eval_dataset = self.eval_dataset
 
         if index_path is None:
-            index_path = os.path.join(self.args.output_dir, f"checkpoint-{self.state.global_step}", "index")
+            index_path = os.path.join(self.args.output_dir, "index_latest")
 
         index_dataset_path = os.path.join(index_path, "index_dataset")
         index_dataset = load_from_disk(index_dataset_path)
@@ -300,7 +300,7 @@ class RerankTrainer:
         )
 
         logger.info("initial build index")
-        initial_index_path = os.path.join(self.training_args.output_dir, f"checkpoint-{0}", "index")
+        initial_index_path = os.path.join(self.training_args.output_dir, "index_latest")
         self.indexer.index(initial_index_path, train_subsample[self.config.text_column], gpus=True)
 
         sampling_dataset.create_sampling_data(
@@ -342,24 +342,21 @@ class RerankTrainer:
         torch.cuda.empty_cache()
 
         # cleanup
-        for path in os.listdir(self.training_args.output_dir):
-            index_path_to_delete = os.path.join(self.training_args.output_dir, path, "index")
-            if path.startswith("checkpoint") and os.path.exists(index_path_to_delete):
-                logger.info(f"[cleanup] deleting index at checkpoint {index_path_to_delete}")
-                shutil.rmtree(index_path_to_delete)
+        if os.path.exists(self.training_args.output_dir, "index_latest"):
+            shutil.rmtree(self.training_args.output_dir, "index_latest")
 
-        latest_index = os.path.join(self.training_args.output_dir, "index")
+        best_index = os.path.join(self.training_args.output_dir, "index_best")
         train_subsample = subsample(
             self.train_dataset, self.config.final_subsample_train, self.config.stratify_splits, self.label_column
         )
-        self.indexer.index(latest_index, train_subsample[self.text_column], gpus=True)
-        train_subsample.save_to_disk(os.path.join(latest_index, "index_dataset"))
+        self.indexer.index(best_index, train_subsample[self.text_column], gpus=True)
+        train_subsample.save_to_disk(os.path.join(best_index, "index_dataset"))
 
         if self.config.do_eval:
             eval_dataset = subsample(
                 self.eval_dataset, self.config.subsample_eval, self.config.stratify_splits, self.label_column
             )
-            metrics = trainer.evaluate(eval_dataset, index_path=latest_index, metric_key_prefix="test")
+            metrics = trainer.evaluate(eval_dataset, index_path=best_index, metric_key_prefix="test")
             logger.info(metrics)
 
         self.finish()
