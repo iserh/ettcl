@@ -62,6 +62,11 @@ def Reuters(mlc: bool = True):
         train_dataset = train_dataset.filter(lambda label: label in c.keys(), input_columns="label")
         test_dataset = test_dataset.filter(lambda label: label in c.keys(), input_columns="label")
 
+        label2id = {k: i for i, k in enumerate(c.keys())}
+
+        train_dataset = train_dataset.map(lambda label:{"label": label2id[label]}, input_columns="label")
+        test_dataset = test_dataset.map(lambda label:{"label": label2id[label]}, input_columns="label")
+
         new_features = train_dataset.features.copy()
         new_features["label"] = ClassLabel(len(c.keys()))
         train_dataset = train_dataset.cast(new_features)
@@ -76,8 +81,8 @@ def Reuters(mlc: bool = True):
 
 
 if __name__ == "__main__":
-    dataset = Reuters(mlc=True)
-    dataset.save_to_disk("~/data/ReutersMLC")
+    # dataset = Reuters(mlc=True)
+    # dataset.save_to_disk("~/data/ReutersMLC")
 
     dataset = Reuters(mlc=False)
     dataset.save_to_disk("~/data/ReutersCLS")
