@@ -1,7 +1,6 @@
-from datasets import DatasetDict, load_dataset
+from datasets import ClassLabel, DatasetDict, Sequence, load_dataset
 
 from ettcl.data.utils import count_labels, train_split
-from datasets import ClassLabel, Sequence
 
 
 def Reuters(mlc: bool = True):

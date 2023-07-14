@@ -402,13 +402,11 @@ class TripleSamplerDataset:
 
     def __init__(
         self,
-        train_dataset: Dataset,
         triples_sampler_cls: type[TripleSamplingDataBuilder | TripleSamplingDataBuilderMLC],
         config: SamplingConfig,
         text_column: str = "text",
         label_column: str = "label",
     ) -> None:
-        self.train_dataset = train_dataset
         self.triples_sampler_cls = triples_sampler_cls
         self.config = config
         self.text_column = text_column
@@ -423,37 +421,25 @@ class TripleSamplerDataset:
         # unfold features
         return [{k: v[i] for k, v in features.items()} for i in range(len(triple))]
 
-    def resample(
+    def create_sampling_data(
         self,
-        indexer: Indexer,
+        dataset: Dataset,
         searcher: Searcher,
         tokenizer: PreTrainedTokenizerBase,
-        subsample_size: int | None,
-        stratify: bool,
         index_path: str,
     ) -> None:
-        # necessary so that reserved memory is freed and can be used by multiprocesses
-        torch.cuda.empty_cache()
-
-        logger.info("subsampling train dataset")
-        train_subsample = subsample(self.train_dataset, subsample_size, stratify, self.label_column)
-
-        logger.info("build index")
-        indexer.index(index_path, train_subsample[self.text_column], gpus=True)
-
         if self.config.sampling_method == "searched":
-            train_subsample = search_dataset(
-                train_subsample,
+            dataset = search_dataset(
+                dataset,
                 searcher,
                 index_path,
                 self.config.searcher_sampling_k,
                 self.text_column,
                 report_stats=True,
             )
+            dataset.save_to_disk(os.path.join(index_path, "index_dataset"))
 
-        train_subsample.save_to_disk(os.path.join(index_path, "index_dataset"))
-
-        dataset_with_sampling_pids = self.build_sampling_data(train_subsample)
+        dataset_with_sampling_pids = self.build_sampling_data(dataset)
         dataset_with_sampling_pids = self.tokenize(dataset_with_sampling_pids, tokenizer)
 
         self.sampling_data = dataset_with_sampling_pids.select_columns(self.triple_columns)

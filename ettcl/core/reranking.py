@@ -46,14 +46,17 @@ logger = getLogger(__name__)
 class ResampleCallback(TrainerCallback):
     def __init__(
         self,
+        train_dataset: Dataset,
         indexer: Indexer,
         searcher: Searcher,
         config: RerankTrainerConfig,
     ) -> None:
+        self.train_dataset = train_dataset
         self.indexer = indexer
         self.searcher = searcher
         self.config = config
         self.next_resample = self.config.resample_interval
+        self.next_dev_eval = self.config.dev_eval_interval
 
     def on_epoch_end(
         self,
@@ -67,22 +70,52 @@ class ResampleCallback(TrainerCallback):
     ):
         if self.next_resample is None:
             return
+        elif self.next_dev_eval is None:
+            return
 
         cur_epoch = int(state.epoch)
 
+        should_rebuild_index = cur_epoch in [self.next_resample, self.next_dev_eval]
+
+        if cur_epoch == self.next_dev_eval:
+            self.next_dev_eval = cur_epoch + self.config.dev_eval_interval
         if cur_epoch == self.next_resample:
-            device = model.device
-            model.cpu()
-            train_dataloader.dataset.resample(
-                indexer=self.indexer,
+            self.next_resample = cur_epoch + self.config.resample_interval
+            should_subsample, should_resample = True, True
+        else:
+            should_subsample, should_resample = False, False
+
+        device = model.device
+        model.cpu()
+        # necessary so that reserved memory is freed and can be used by multiprocesses
+        torch.cuda.empty_cache()
+
+        train_dataset = self.train_dataset
+
+        if should_subsample:
+            logger.info("subsampling train dataset")
+            train_dataset = subsample(
+                self.train_dataset,
+                self.config.subsample_train,
+                self.config.stratify_splits,
+                self.config.label_column,
+            )
+
+        if should_rebuild_index:
+            logger.info("build index")
+            index_path = os.path.join(args.output_dir, f"checkpoint-{state.global_step}", "index")
+            self.indexer.index(index_path, train_dataset[self.config.text_column], gpus=True)
+            train_dataset.save_to_disk(os.path.join(index_path, "index_dataset"))
+
+        if should_resample:
+            train_dataloader.dataset.create_sampling_data(
+                dataset=train_dataset,
                 searcher=self.searcher,
                 tokenizer=tokenizer,
-                subsample_size=self.config.subsample_train,
-                stratify=self.config.stratify_splits,
-                index_path=os.path.join(args.output_dir, f"checkpoint-{state.global_step}", "index"),
+                index_path=index_path,
             )
-            model.to(device)
-            self.next_resample = cur_epoch + self.config.resample_interval
+
+        model.to(device)
 
 
 class TrainerWithEvaluation(Trainer):
@@ -202,6 +235,7 @@ class RerankTrainer:
         if self.searcher_eval is None:
             self.config.do_eval = False
             self.config.do_dev_eval = False
+            self.config.dev_eval_interval = None
 
         self.searcher_sampling = searcher_sampling
         if self.config.sampling_method == "searched" and self.searcher_sampling is None:
@@ -220,6 +254,7 @@ class RerankTrainer:
             )
         else:
             self.config.do_dev_eval = False
+            self.config.dev_eval_interval = None
 
         self.eval_dataset = eval_dataset
         if self.eval_dataset is not None:
@@ -243,7 +278,6 @@ class RerankTrainer:
             logger.info(f"eval_dataset size: {len(self.eval_dataset)*(self.config.subsample_eval or 1)}")
 
         sampling_dataset = TripleSamplerDataset(
-            train_dataset=self.train_dataset,
             triples_sampler_cls=self.triples_sampler_cls,
             config=self.config,
             text_column=self.config.text_column,
@@ -251,18 +285,28 @@ class RerankTrainer:
         )
 
         resample_callback = ResampleCallback(
+            train_dataset=self.train_dataset,
             indexer=self.indexer,
             searcher=self.searcher_sampling,
             config=self.config,
         )
 
-        initial_index_path = os.path.join(self.training_args.output_dir, "checkpoint-0", "index")
-        sampling_dataset.resample(
-            indexer=self.indexer,
+        logger.info("initial subsampling train dataset")
+        train_subsample = subsample(
+            self.train_dataset,
+            self.config.subsample_train,
+            self.config.stratify_splits,
+            self.config.label_column,
+        )
+
+        logger.info("initial build index")
+        initial_index_path = os.path.join(self.training_args.output_dir, f"checkpoint-{0}", "index")
+        self.indexer.index(initial_index_path, train_subsample[self.config.text_column], gpus=True)
+
+        sampling_dataset.create_sampling_data(
+            dataset=train_subsample,
             searcher=self.searcher_sampling,
             tokenizer=self.tokenizer,
-            subsample_size=self.config.subsample_train,
-            stratify=self.config.stratify_splits,
             index_path=initial_index_path,
         )
 

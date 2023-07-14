@@ -23,7 +23,7 @@ logger = getLogger(__name__)
 class ColBERTIndexerConfig:
     nbits: int = 2
     kmeans_niters: int = 4
-    num_partitions_fac: int = 16
+    num_partitions: int | None = None
 
 
 class ColBERTIndexer(Indexer):
@@ -63,7 +63,7 @@ class ColBERTIndexer(Indexer):
                 nbits=self.config.nbits,
                 dim=self.encoder.embedding_dim,
                 bsize=512,
-                num_partitions_fac=self.config.num_partitions_fac,
+                num_partitions=self.config.num_partitions,
             )
 
             output_path.mkdir(parents=True, exist_ok=True)

@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--indexer_nbits", type=int)
     parser.add_argument("--indexer_kmeans_niters", type=int)
-    parser.add_argument("--indexer_num_partitions_fac", type=int)
+    parser.add_argument("--indexer_num_partitions", type=int)
     parser.add_argument("--indexer_string_factory", type=str)
     parser.add_argument("--indexer_train_size", type=int)
     parser.add_argument("--indexer_metric_type", type=str)

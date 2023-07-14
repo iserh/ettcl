@@ -1,5 +1,6 @@
 import functools
 import os
+from itertools import chain
 from logging import getLogger
 
 from datasets import Dataset
@@ -12,7 +13,6 @@ from ettcl.core.search import search_dataset
 from ettcl.encoding import Encoder
 from ettcl.indexing import Indexer
 from ettcl.searching import Searcher
-from itertools import chain
 
 logger = getLogger(__name__)
 
@@ -40,7 +40,9 @@ def evaluate_mlc(
     mlknn.train()
     mlknn.save(os.path.join(index_path, "mlknn"))
 
-    eval_dataset = search_dataset(eval_dataset, searcher, index_path, k=mlknn_k, text_column=text_column, report_stats=True)
+    eval_dataset = search_dataset(
+        eval_dataset, searcher, index_path, k=mlknn_k, text_column=text_column, report_stats=True
+    )
     num_labels_test = max(chain(*map(lambda feat: feat[label_column], eval_dataset))) + 1
     logger.info(f"num_labels_test: {num_labels_test}")
     num_labels = max(mlknn.num_labels, num_labels_test)
@@ -52,9 +54,7 @@ def evaluate_mlc(
     metric_dict = {}
     for k in ks:
         # postprocess @k
-        eval_dataset = eval_dataset.map(
-            lambda preds: {"preds_k": preds[:k]}, input_columns="preds"
-        )
+        eval_dataset = eval_dataset.map(lambda preds: {"preds_k": preds[:k]}, input_columns="preds")
 
         metrics = MLCMetrics(num_labels)
         for batch in eval_dataset.select_columns(["preds_k", label_column]).iter(64):
