@@ -64,6 +64,14 @@ def evaluate_mlc(
         metrics_at_k = {f"{metric_key_prefix}_{key}/{k}": val for key, val in metrics_at_k.items()}
         metric_dict = metric_dict | metrics_at_k
 
+    metrics = MLCMetrics(num_labels)
+    for batch in eval_dataset.select_columns(["preds", label_column]).iter(64):
+        metrics.update(list(batch.values()))
+
+    metrics = metrics.compute()
+    metrics = {f"{metric_key_prefix}_{key}": val for key, val in metrics.items()}
+    metric_dict = metric_dict | metrics
+
     return metric_dict
 
 
