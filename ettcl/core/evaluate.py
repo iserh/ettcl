@@ -160,6 +160,7 @@ class Evaluator:
         )
 
         metrics = {k.replace(f"{self.config.prefix}_", f"{self.config.prefix}/"): v for k, v in metrics.items()}
+        metrics |= {"train/global_step": 0, "train/epoch": 0}
 
         logger.info(metrics)
         self.log(metrics)
