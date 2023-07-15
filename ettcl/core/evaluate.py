@@ -96,8 +96,6 @@ def evaluate(
 
 class Evaluator:
     config_cls = EvaluatorConfig
-    text_column = "text"
-    label_column = "label"
     evaluate_fn = staticmethod(evaluate)
 
     def __init__(
@@ -112,6 +110,8 @@ class Evaluator:
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.config = config
+        self.text_column = config.text_column
+        self.label_column = config.label_column
         self.encoder = encoder
         self.indexer = indexer
         self.searcher = searcher
