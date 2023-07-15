@@ -302,6 +302,7 @@ class RerankTrainer:
         logger.info("initial build index")
         initial_index_path = os.path.join(self.training_args.output_dir, "index_latest")
         self.indexer.index(initial_index_path, train_subsample[self.config.text_column], gpus=True)
+        train_subsample.save_to_disk(os.path.join(initial_index_path, "index_dataset"))
 
         sampling_dataset.create_sampling_data(
             dataset=train_subsample,
