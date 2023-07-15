@@ -21,7 +21,6 @@ logger = getLogger(__name__)
 
 class RerankMLCTrainer(RerankTrainer):
     config_cls = RerankMLCTrainerConfig
-    label_column = "labels"
     triples_sampler_cls = TripleSamplingDataBuilderMLC
     evaluate_fn = staticmethod(evaluate_mlc)
 

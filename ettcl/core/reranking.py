@@ -206,8 +206,6 @@ class TrainerWithEvaluation(Trainer):
 
 class RerankTrainer:
     config_cls = RerankTrainerConfig
-    text_column = "text"
-    label_column = "label"
     triples_sampler_cls = TripleSamplingDataBuilder
     evaluate_fn = staticmethod(evaluate)
 
@@ -229,6 +227,8 @@ class RerankTrainer:
         self.encoder = encoder
         self.tokenizer = tokenizer
         self.config = config
+        self.text_column = config.text_column
+        self.label_column = config.label_column
         self.training_args = training_args
         self.indexer = indexer
         self.searcher_eval = searcher_eval
