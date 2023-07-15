@@ -157,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_prefix", type=str)
     parser.add_argument("--config_mlknn_s", type=float)
     parser.add_argument("--config_mlknn_k", type=int)
+    parser.add_argument("--config_resume", type=str)
 
     args = parser.parse_args()
 

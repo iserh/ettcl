@@ -172,12 +172,20 @@ class Evaluator:
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         try:
-            self.run = wandb.init(
-                project=self.config.project,
-                dir=output_dir,
-                config=self.run_config,
-                save_code=True,
-            )
+            if self.config.resume is not None:
+                self.run = wandb.init(
+                    id=self.config.resume,
+                    project=self.config.project,
+                    dir=output_dir,
+                    resume=True,
+                )
+            else:
+                self.run = wandb.init(
+                    project=self.config.project,
+                    dir=output_dir,
+                    config=self.run_config,
+                    save_code=True,
+                )
             self.run.log_code(
                 ".",
                 include_fn=lambda path: path.endswith(".py")

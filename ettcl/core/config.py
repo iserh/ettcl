@@ -59,6 +59,7 @@ class RerankMLCTrainerConfig(RerankTrainerConfig):
 @dataclass
 class EvaluatorConfig:
     output_dir: str | PathLike = "evaluations"
+    resume: str | None = None
     project: str | None = None
     eval_ks: tuple[int] = (1,)
     subsample_train: int | None = None
