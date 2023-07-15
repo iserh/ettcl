@@ -1,9 +1,12 @@
 from datasets import DatasetDict, load_dataset
 
 from ettcl.data.utils import count_labels, train_split
+from ettcl.utils import seed_everything
 
 
 def AmazonCat_13K() -> DatasetDict:
+    seed_everything(12345)
+
     dataset = load_dataset("ettcl/data/xcr.py", name="AmazonCat-13K")
 
     dataset = dataset.map(

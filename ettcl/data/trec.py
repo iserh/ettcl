@@ -1,9 +1,12 @@
 from datasets import DatasetDict, load_dataset
 
 from ettcl.data.utils import train_split
+from ettcl.utils import seed_everything
 
 
 def TREC(label_column: str = "coarse_label"):
+    seed_everything(12345)
+
     dataset = load_dataset("trec")
 
     dataset = dataset.rename_column(label_column, "label")

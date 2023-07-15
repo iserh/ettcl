@@ -1,9 +1,12 @@
 from datasets import ClassLabel, DatasetDict, Sequence, load_dataset
 
 from ettcl.data.utils import count_labels, train_split
+from ettcl.utils import seed_everything
 
 
 def Reuters(mlc: bool = True):
+    seed_everything(12345)
+
     train_dataset = load_dataset("reuters21578", "ModApte", split="train")
     train_dataset = train_dataset.select_columns(["topics", "text"])
     test_dataset = load_dataset("reuters21578", "ModApte", split="test")
