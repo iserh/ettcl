@@ -3,7 +3,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from datasets import load_dataset
+from datasets import load_from_disk
 from transformers import TrainingArguments
 
 from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
