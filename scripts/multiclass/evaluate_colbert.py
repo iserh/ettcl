@@ -20,13 +20,16 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     seed = params["seed"]["value"] if "seed" in params.keys() else 12345
     seed_everything(seed)
 
-    output_dir = os.path.join(
-        "evaluation",
-        os.path.basename(params["dataset"]["value"]),
-        "colbert",
-        os.path.basename(params["model"]["value"]),
-        datetime.now().isoformat(),
-    )
+    if params["config"]["value"].get("output_dir", None) is not None:
+        output_dir = params["config"]["value"].pop("output_dir")
+    else:
+        output_dir = os.path.join(
+            "evaluation",
+            os.path.basename(params["dataset"]["value"]),
+            "colbert",
+            os.path.basename(params["model"]["value"]),
+            datetime.now().isoformat(),
+        )
 
     model = ColBERTModel.from_pretrained(params["model"]["value"])
     tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
