@@ -1,6 +1,9 @@
 import itertools
+import json
+import os
 import random
 import re
+from datasets import Dataset
 from collections.abc import Iterable, Iterator
 from logging import getLogger
 from time import perf_counter
@@ -10,6 +13,40 @@ import torch
 
 logger = getLogger(__name__)
 Devices = int | bool | list[int] | list[str] | None
+
+
+class Checkpoint:
+    def __init__(self, path_to_experiment: str) -> None:
+        self.experiment = path_to_experiment
+        self.index = os.path.join(path_to_experiment, "index_best")
+
+        checkpoints = [name for name in os.listdir(path_to_experiment) if name.startswith("checkpoint")]
+        self.latest = os.path.join(path_to_experiment, max((chkpt for chkpt in checkpoints), default=None))
+
+        trainer_state_path = os.path.join(self.latest, "trainer_state.json")
+        assert os.path.exists(trainer_state_path), f"{self.latest} is no valid checkpoint."
+
+        with open(trainer_state_path, "r") as fp:
+            trainer_state = json.load(fp)
+
+        self.best = trainer_state["best_model_checkpoint"]
+        assert os.path.exists(self.best), f"{self.best} does not exist."
+
+
+def knn_classify(index_dataset_or_labels, test_dataset_or_pids, k: int = 10, label_column: str = 'label'):
+    if isinstance(index_dataset_or_labels, Dataset):
+        index_labels = index_dataset_or_labels.with_format('torch')[label_column]
+    else:
+        index_labels = torch.tensor(index_dataset_or_labels)
+
+    if isinstance(index_dataset_or_labels, Dataset):
+        match_pids = test_dataset_or_pids.with_format('torch')['match_pids']
+
+    match_pids = torch.nn.utils.rnn.pad_sequence(list(match_pids), batch_first=True, padding_value=-1)
+    match_labels = index_labels[match_pids.tolist()]
+    match_labels[match_pids == -1] = -1
+
+    return match_labels
 
 
 def chunked(iterator: Iterator | Iterable, n: int) -> Iterator[list]:
