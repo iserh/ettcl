@@ -61,6 +61,7 @@ class ColBERTIndexer(Indexer):
                 resume=resume,
                 index_path=str(output_path),
                 nbits=self.config.nbits,
+                kmeans_niters=self.config.kmeans_niters,
                 dim=self.encoder.embedding_dim,
                 bsize=512,
                 num_partitions=self.config.num_partitions,
