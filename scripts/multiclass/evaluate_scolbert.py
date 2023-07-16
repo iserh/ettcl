@@ -75,7 +75,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     evaluator.run_config = {
         "seed": seed,
-        "dataset": params["dataset"]["value"],
+        "dataset": os.path.basename(params["dataset"]["value"]),
         "num_sentences": num_sentences,
         "architecture": "S-ColBERT",
         "model": params["model"]["value"],

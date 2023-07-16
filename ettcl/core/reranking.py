@@ -380,6 +380,7 @@ class RerankTrainer:
         try:
             self.run = wandb.init(
                 project=self.config.project,
+                name=f"{self.run_config['dataset']}-{self.run_config['architecture']}",
                 dir=output_dir,
                 config=self.run_config,
                 save_code=True,

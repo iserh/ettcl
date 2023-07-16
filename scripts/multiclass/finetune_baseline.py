@@ -94,7 +94,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     run_config = {
         "seed": seed,
-        "dataset": params["dataset"]["value"],
+        "dataset": os.path.basename(params["dataset"]["value"]),
         "architecture": "BERT",
         "model": params["model"]["value"],
         "training": training_args.to_dict(),
