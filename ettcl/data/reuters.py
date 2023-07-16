@@ -67,8 +67,8 @@ def Reuters(mlc: bool = True):
 
         label2id = {k: i for i, k in enumerate(c.keys())}
 
-        train_dataset = train_dataset.map(lambda label:{"label": label2id[label]}, input_columns="label")
-        test_dataset = test_dataset.map(lambda label:{"label": label2id[label]}, input_columns="label")
+        train_dataset = train_dataset.map(lambda label: {"label": label2id[label]}, input_columns="label")
+        test_dataset = test_dataset.map(lambda label: {"label": label2id[label]}, input_columns="label")
 
         new_features = train_dataset.features.copy()
         new_features["label"] = ClassLabel(len(c.keys()))
