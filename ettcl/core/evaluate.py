@@ -146,7 +146,7 @@ class Evaluator:
         index_path = os.path.join(self.config.output_dir, "index_eval")
         if not os.path.exists(index_path) and self.config.reuse_index:
             logger.info("build index")
-            # self.indexer.index(index_path, index_dataset[self.text_column], gpus=True)
+            self.indexer.index(index_path, index_dataset[self.text_column], gpus=True)
 
         index_dataset_path = os.path.join(index_path, "index_dataset")
         if os.path.exists(index_dataset_path) and self.config.reuse_index:
