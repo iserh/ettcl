@@ -5,6 +5,7 @@ from datetime import datetime
 
 from datasets import load_from_disk
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 from ettcl.core.evaluate_mlc import EvaluatorMLC, EvaluatorMLCConfig
 from ettcl.encoding import STEncoder
@@ -32,6 +33,10 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         )
 
     model = SentenceTransformer(params["model"]["value"])
+    # workaround: sentence-transformer tokenizer has wrong model_max_length
+    model.sentence_transformer[0].tokenizer = AutoTokenizer.from_pretrained(
+        params["model"]["value"], **params.get("tokenizer", {}).get("value", {})
+    )
     encoder = STEncoder(model, normalize_embeddings=True)
 
     indexer_config = FaissIndexerConfig(**params["indexer"]["value"])
