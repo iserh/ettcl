@@ -106,7 +106,7 @@ class ColBERTIndexer(Indexer):
 
         if len(deleted):
             logger.warning(f"#> Will delete {len(deleted)} files already at {index_path}")
-            # time.sleep(10)
+            time.sleep(10)
 
             for filename in deleted:
                 os.remove(filename)
