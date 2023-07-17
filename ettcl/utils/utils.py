@@ -1,3 +1,4 @@
+from typing import Generator
 import itertools
 import json
 import os
@@ -46,7 +47,10 @@ def knn_classify(index_dataset_or_labels, test_dataset_or_pids, k: int = 10, lab
     match_labels = index_labels[match_pids.tolist()]
     match_labels[match_pids == -1] = -1
 
-    return match_labels
+    knn = match_labels[:, :k]
+    y_pred = torch.mode(knn)[0]
+
+    return y_pred
 
 
 def chunked(iterator: Iterator | Iterable, n: int) -> Iterator[list]:
@@ -102,7 +106,14 @@ digits = "([0-9])"
 multiple_dots = r"\.{2,}"
 
 
-def split_into_sentences(text: str, max_num_sentences: int) -> list[str]:
+def split_into_sentences(text: str | list[str], max_num_sentences: int) -> list[str] | Generator[list[str], None, None]:
+    if isinstance(text, list):
+        return map(lambda text: _split_into_sentences(text, max_num_sentences), text)
+    else:
+        return _split_into_sentences(text, max_num_sentences)
+
+
+def _split_into_sentences(text: str, max_num_sentences: int) -> list[str]:
     """
     Split the text into sentences.
 
