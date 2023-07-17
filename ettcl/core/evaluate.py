@@ -8,7 +8,7 @@ try:
     import wandb
 except ModuleNotFoundError:
     pass
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 from ettcl.core.config import EvaluatorConfig
@@ -136,21 +136,27 @@ class Evaluator:
     def evaluate(self) -> None:
         self.init_wandb()
 
-        train_dataset = subsample(
+        index_dataset = subsample(
             self.train_dataset, self.config.subsample_train, self.config.stratify_splits, self.label_column
         )
         eval_dataset = subsample(
             self.eval_dataset, self.config.subsample_eval, self.config.stratify_splits, self.label_column
         )
 
-        logger.info("build index")
         index_path = os.path.join(self.config.output_dir, "index_eval")
-        self.indexer.index(index_path, train_dataset[self.text_column], gpus=True)
+        if not os.path.exists(index_path) and self.config.reuse_index:
+            logger.info("build index")
+            # self.indexer.index(index_path, index_dataset[self.text_column], gpus=True)
+
+        index_dataset_path = os.path.join(index_path, "index_dataset")
+        if os.path.exists(index_dataset_path) and self.config.reuse_index:
+            logger.info(f"load index dataset from {index_dataset_path}")
+            index_dataset = load_from_disk(index_dataset_path)
 
         logger.info(f"compute metrics")
         metrics = self.evaluate_fn(
             eval_dataset=eval_dataset,
-            index_dataset=train_dataset,
+            index_dataset=index_dataset,
             searcher=self.searcher,
             index_path=index_path,
             ks=self.config.eval_ks,

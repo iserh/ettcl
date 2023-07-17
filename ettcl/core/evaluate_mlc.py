@@ -33,6 +33,7 @@ def evaluate_mlc(
         index_dataset = search_dataset(
             index_dataset, searcher, index_path, k=mlknn_k, text_column=text_column, report_stats=True
         )
+        index_dataset.save_to_disk(os.path.join(index_path, "index_dataset"))
 
     index_dataset.set_format("pt")
 

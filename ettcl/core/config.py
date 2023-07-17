@@ -62,6 +62,7 @@ class EvaluatorConfig:
     output_dir: str | PathLike = "evaluations"
     resume: str | None = None
     project: str | None = None
+    reuse_index: bool = True
     exp_name: str | None = None
     eval_ks: tuple[int] = (1,)
     subsample_train: int | None = None
