@@ -34,7 +34,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     model = SentenceTransformer(params["model"]["value"])
     # workaround: sentence-transformer tokenizer has wrong model_max_length
-    model.sentence_transformer[0].tokenizer = AutoTokenizer.from_pretrained(
+    model[0].tokenizer = AutoTokenizer.from_pretrained(
         params["model"]["value"], **params.get("tokenizer", {}).get("value", {})
     )
     encoder = STEncoder(model, normalize_embeddings=True)
