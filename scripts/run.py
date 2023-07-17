@@ -159,6 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--config_mlknn_k", type=int)
     parser.add_argument("--config_output_dir", type=str)
     parser.add_argument("--config_resume", type=str)
+    parser.add_argument("--config_exp_name", type=str)
 
     args = parser.parse_args()
 

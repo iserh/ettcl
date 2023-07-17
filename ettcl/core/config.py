@@ -28,6 +28,7 @@ class SamplingConfig:
 @dataclass
 class RerankTrainerConfig(SamplingConfig):
     project: str | None = None
+    exp_name: str | None = None
     do_dev_eval: bool = True
     dev_split_size: int | float = 0.1
     do_eval: bool = True
@@ -61,6 +62,7 @@ class EvaluatorConfig:
     output_dir: str | PathLike = "evaluations"
     resume: str | None = None
     project: str | None = None
+    exp_name: str | None = None
     eval_ks: tuple[int] = (1,)
     subsample_train: int | None = None
     subsample_eval: int | None = None

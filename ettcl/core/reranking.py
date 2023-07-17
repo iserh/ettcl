@@ -377,10 +377,11 @@ class RerankTrainer:
         logger.info("init wandb")
         output_dir = Path(self.training_args.output_dir)
         output_dir.mkdir(parents=True)
+        exp_name = self.config.exp_name or f"{self.run_config['dataset']}-{self.run_config['architecture']}"
         try:
             self.run = wandb.init(
                 project=self.config.project,
-                name=f"{self.run_config['dataset']}-{self.run_config['architecture']}",
+                name=exp_name,
                 dir=output_dir,
                 config=self.run_config,
                 save_code=True,

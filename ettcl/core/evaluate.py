@@ -171,6 +171,7 @@ class Evaluator:
         logger.info("init wandb")
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        exp_name = self.config.exp_name or f"{self.run_config['dataset']}-{self.run_config['architecture']}"
         try:
             if self.config.resume is not None:
                 self.run = wandb.init(
@@ -182,6 +183,7 @@ class Evaluator:
             else:
                 self.run = wandb.init(
                     project=self.config.project,
+                    name=exp_name,
                     dir=output_dir,
                     config=self.run_config,
                     save_code=True,
