@@ -10,7 +10,7 @@ from ettcl.core.reranking import RerankTrainer, RerankTrainerConfig
 from ettcl.encoding import STEncoder
 from ettcl.indexing import FaissIndexerConfig, FaissSingleVectorIndexer
 from ettcl.logging import configure_logger
-from ettcl.modeling import SentenceTransformerForReranking
+from ettcl.modeling import sentence_transformer_for_reranking_factory
 from ettcl.searching import FaissSingleVectorSearcher
 from ettcl.utils import seed_everything
 
@@ -29,7 +29,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         datetime.now().isoformat(),
     )
 
-    model = SentenceTransformerForReranking(params["model"]["value"])
+    model = sentence_transformer_for_reranking_factory(params["model"]["value"], **params["model_config"]["value"])
     # workaround: sentence-transformer tokenizer has wrong model_max_length
     model.sentence_transformer[0].tokenizer = AutoTokenizer.from_pretrained(
         params["model"]["value"], **params.get("tokenizer", {}).get("value", {})

@@ -85,6 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_sentences", type=int)
 
     parser.add_argument("--mconfig_compression_dim", type=int)
+    parser.add_argument("--mconfig_pooling", type=str)
 
     parser.add_argument("--tokenizer_query_maxlen", type=int)
     parser.add_argument("--tokenizer_doc_maxlen", type=int)

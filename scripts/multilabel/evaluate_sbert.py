@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 
 from ettcl.core.evaluate_mlc import EvaluatorMLC, EvaluatorMLCConfig
+from ettcl.modeling import sentence_transformer_factory
 from ettcl.encoding import STEncoder
 from ettcl.indexing import FaissIndexerConfig, FaissSingleVectorIndexer
 from ettcl.logging import configure_logger
@@ -32,7 +33,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
             datetime.now().isoformat(),
         )
 
-    model = SentenceTransformer(params["model"]["value"])
+    model = sentence_transformer_factory(params["model"]["value"], **params["model_config"]["value"])
     # workaround: sentence-transformer tokenizer has wrong model_max_length
     model[0].tokenizer = AutoTokenizer.from_pretrained(
         params["model"]["value"], **params.get("tokenizer", {}).get("value", {})
