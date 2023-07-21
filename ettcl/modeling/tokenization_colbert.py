@@ -101,7 +101,7 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
             self.__wrapped__.tokenize(special_token + s, add_special_tokens=add_special_tokens, **kwargs) for s in text
         ]
 
-        if pretty:
+        if pretty and special_token != "":
             special_token_pretty = self.special_tokens_pretty[mode]
             for t in tokens:
                 t[1] = special_token_pretty
