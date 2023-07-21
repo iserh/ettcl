@@ -129,13 +129,15 @@ class ColBERTModel(ColBERTPreTrainedModel):
         sequence_output = encoder_outputs[0]
         compressed_output = self.linear(sequence_output) if self.linear is not None else sequence_output
         compressed_output = compressed_output * attention_mask.unsqueeze(-1)
-        normalized_output = F.normalize(compressed_output, p=2, dim=2)
+
+        if self.config.normalize:
+            compressed_output = F.normalize(compressed_output, p=2, dim=2)
 
         if not return_dict:
-            return (normalized_output,) + encoder_outputs[1:]
+            return (compressed_output,) + encoder_outputs[1:]
 
         return ColbertOutputWitgCrossAttentions(
-            normalized_output=normalized_output,
+            normalized_output=compressed_output,
             output_mask=attention_mask,
             hidden_states=encoder_outputs.hidden_states,
         )

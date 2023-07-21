@@ -12,6 +12,7 @@ class ColBERTConfig(PretrainedConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.compression_dim: int | None = kwargs.pop("compression_dim", None)
+        self.normalize: bool = kwargs.pop("normalize", True)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike, **kwargs) -> PretrainedConfig:

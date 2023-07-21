@@ -66,6 +66,7 @@ class ColBERTEncoder(MultiVectorEncoder):
         **unused_kwargs,
     ) -> tuple[torch.FloatTensor, list[int]]:
         assert len(passages) > 0, "No passages provided"
+        self.model.eval()
 
         encodings = self.tokenizer(
             passages,
@@ -117,6 +118,7 @@ class ColBERTEncoder(MultiVectorEncoder):
         **unused_kwargs,
     ) -> torch.FloatTensor:
         assert len(queries) > 0, "No queries provided"
+        self.model.eval()
 
         encodings = self.tokenizer(
             queries,

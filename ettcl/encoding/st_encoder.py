@@ -37,6 +37,7 @@ class STEncoder(SingleVectorEncoder):
         **unused_kwargs,
     ) -> torch.FloatTensor:
         assert len(passages) > 0, "No passages provided"
+        self.model.eval()
 
         embeddings = []
         for megabatch in chunked(passages, n=batch_size * 4):
