@@ -4,3 +4,4 @@ from .modeling_sentence_colbert import SentenceColBERTForReranking, SentenceColB
 from .sentence_transformer import SentenceTransformerForReranking, sentence_transformer_factory, sentence_transformer_for_reranking_factory
 from .tokenization_colbert import ColBERTTokenizer
 from .tokenization_sentence_colbert import SentenceTokenizer
+from .modeling_bert import BertForSequenceClassification

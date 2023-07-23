@@ -7,7 +7,6 @@ import wandb
 from datasets import load_from_disk
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from transformers import (
-    AutoModelForSequenceClassification,
     AutoTokenizer,
     EvalPrediction,
     Trainer,
@@ -16,6 +15,7 @@ from transformers import (
 
 from ettcl.logging import configure_logger
 from ettcl.utils import seed_everything
+from ettcl.modeling import BertForSequenceClassification
 
 
 def compute_metrics(eval_prediction: EvalPrediction) -> dict:
@@ -70,7 +70,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     test_dataset.set_format("torch")
 
     num_labels = len(train_dataset["label"].unique())
-    model = AutoModelForSequenceClassification.from_pretrained(
+    model = BertForSequenceClassification.from_pretrained(
         "bert-base-uncased",
         num_labels=num_labels,
     )
@@ -116,6 +116,11 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     )
 
     trainer.train()
+
+    best_model_checkpoint = trainer.state.best_model_checkpoint
+    if best_model_checkpoint is not None and os.path.exists(best_model_checkpoint):
+        os.rename(best_model_checkpoint, os.path.join(training_args.output_dir, "model_best"))
+
     trainer.evaluate(test_dataset, metric_key_prefix="test")
 
 

@@ -346,6 +346,9 @@ class RerankTrainer:
         latest_index = os.path.join(self.training_args.output_dir, "index_latest")
         if os.path.exists(latest_index):
             shutil.rmtree(latest_index)
+        best_model_checkpoint = trainer.state.best_model_checkpoint
+        if best_model_checkpoint is not None and os.path.exists(best_model_checkpoint):
+            os.rename(best_model_checkpoint, os.path.join(self.training_args.output_dir, "model_best"))
 
         best_index = os.path.join(self.training_args.output_dir, "index_best")
         train_subsample = subsample(
