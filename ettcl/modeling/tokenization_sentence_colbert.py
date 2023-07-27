@@ -32,6 +32,9 @@ class SentenceTokenizer(ColBERTTokenizer):
             attend_to_mask_tokens=False,
         )
 
+    def tokenize(self, text: str | list[str], **kwargs) -> list[list[str]] | list[str]:
+        return text
+
     def pad(
         self,
         encoded_inputs,

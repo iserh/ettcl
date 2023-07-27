@@ -3,6 +3,7 @@ from bertviz import head_view
 
 from ettcl.modeling.modeling_colbert import ColBERTModel, colbert_score
 from ettcl.modeling.tokenization_colbert import ColBERTTokenizer
+from ettcl.modeling.tokenization_sentence_colbert import SentenceTokenizer
 
 
 def maxsim_view(
@@ -46,8 +47,15 @@ def explain_scores(
     q_inputs = tokenizer(query, mode="query", return_tensors="pt")
     d_inputs = tokenizer(doc, mode="doc", return_tensors="pt")
 
-    q_tokens = tokenizer.tokenize(query, mode="query")
-    d_tokens = tokenizer.tokenize(doc, mode="doc")
+    if isinstance(tokenizer, SentenceTokenizer):
+        q_inputs = {k: torch.stack(v) for k, v in q_inputs.items()}
+        d_inputs = {k: torch.stack(v) for k, v in d_inputs.items()}
+
+    query_length = q_inputs['attention_mask'].sum()
+    doc_length = d_inputs['attention_mask'].sum()
+
+    q_tokens = tokenizer.tokenize(query, mode="query")[:query_length]
+    d_tokens = tokenizer.tokenize(doc, mode="doc")[:doc_length]
 
     if use_gpu:
         model.cuda()
