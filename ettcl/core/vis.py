@@ -56,8 +56,8 @@ def explain_scores(
         q_inputs = {k: torch.stack(v) for k, v in q_inputs.items()}
         d_inputs = {k: torch.stack(v) for k, v in d_inputs.items()}
 
-    query_length = q_inputs['attention_mask'].sum()
-    doc_length = d_inputs['attention_mask'].sum()
+    query_length = q_inputs["attention_mask"].sum()
+    doc_length = d_inputs["attention_mask"].sum()
 
     q_tokens = tokenizer.tokenize(query, mode="query")[:query_length]
     d_tokens = tokenizer.tokenize(doc, mode="doc")[:doc_length]

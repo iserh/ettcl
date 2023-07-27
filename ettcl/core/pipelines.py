@@ -146,7 +146,9 @@ class ClassificationPipeline:
 
         return self.predictions
 
-    def explain_prediction(self, idx: int, match_idx: int, true_labels: list[int] | None = None, max_only: bool = False):
+    def explain_prediction(
+        self, idx: int, match_idx: int, true_labels: list[int] | None = None, max_only: bool = False
+    ):
         if not hasattr(self, "search_result"):
             raise RuntimeError(
                 "This pipeline has no search results stored. This can either be because the selected "
