@@ -12,6 +12,26 @@ from ettcl.modeling.tokenization_colbert import ColBERTTokenizer, TokenizerMode
 class SentenceTokenizer(ColBERTTokenizer):
     """Highly experimental!!"""
 
+    def __init__(
+        self,
+        tokenizer: PreTrainedTokenizerBase,
+        *inputs,
+        add_special_tokens: bool = True,
+        query_maxlen: int = 512,
+        doc_maxlen: int = 512,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            tokenizer=tokenizer,
+            add_special_tokens=add_special_tokens,
+            query_maxlen=query_maxlen,
+            doc_maxlen=doc_maxlen,
+            query_token=None,
+            doc_token=None,
+            query_augmentation=False,
+            attend_to_mask_tokens=False,
+        )
+
     def pad(
         self,
         encoded_inputs,
