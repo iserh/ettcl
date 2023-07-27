@@ -23,6 +23,7 @@ class ColBERTSearcherConfig:
     plaid_num_elem_batch: int = 3e8
     skip_plaid_stage_3: bool = False
     plaid_stage_2_3_cpu: bool = False
+    filter_pids: list[int] | None = None
 
 
 @dataclass
@@ -89,6 +90,12 @@ class ColBERTSearcher(Searcher):
             self.encoder.cpu()
             self.ranker.cpu()
 
+        if self.config.filter_pids is not None:
+            filter_pids = torch.tensor(self.config.filter_pids, device=torch.cuda.current_device() if use_gpu else 'cpu')
+            self.filter_fn = lambda pids: pids[~torch.isin(pids, filter_pids)]
+        else:
+            self.filter_fn = None
+
         with Run().context(run_config):
             _config = _SearcherSettings.from_existing(Run().config)
             _config.configure(
@@ -150,10 +157,14 @@ class ColBERTSearcher(Searcher):
             if args.ndocs is None:
                 args.configure(ndocs=max(k * 4, 1024))
 
-        pids, scores = self.ranker.rank(args, Q.unsqueeze(0))
+        pids, scores = self.ranker.rank(args, Q.unsqueeze(0), self.filter_fn)
 
         # move to cpu
-        pids, scores = pids[:k].cpu(), scores[:k].cpu().to(torch.float32)
+        if len(pids):
+            pids, scores = pids[:k].cpu(), scores[:k].cpu().to(torch.float32)
+        else:
+            pids = torch.LongTensor([])
+            scores = torch.FloatTensor([])
 
         match return_tensors:
             case True | "pt":

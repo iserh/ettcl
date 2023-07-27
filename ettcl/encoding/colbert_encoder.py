@@ -21,13 +21,22 @@ def sort_by_length(dataset: Dataset, lengths: list[int]) -> tuple[Dataset, torch
     return dataset.select(indices), reverse_indices
 
 
+def filter_input_ids(features: dict, filter_ids: torch.Tensor):
+    filter_mask = ~torch.isin(features['input_ids'], filter_ids)
+    return {
+        "length": filter_mask.sum(),
+        **{k: v[~filter_mask] for k, v in features.items()}
+    }
+
+
 class ColBERTEncoder(MultiVectorEncoder):
-    def __init__(self, model: ColBERTModel, tokenizer: ColBERTTokenizer) -> None:
+    def __init__(self, model: ColBERTModel, tokenizer: ColBERTTokenizer, skiplist: list[int] | None = None) -> None:
         super().__init__()
         self.model = model
         self.tokenizer = tokenizer
         self.use_gpu = False
 
+        self.skiplist = torch.tensor(skiplist) if skiplist is not None else None
         self.data_collator = DataCollatorWithPadding(tokenizer)
 
     @property
@@ -78,6 +87,12 @@ class ColBERTEncoder(MultiVectorEncoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset.set_format("torch")
+
+        if self.skiplist is not None:
+            dataset = dataset.map(lambda features: filter_input_ids(features, self.skiplist))
+            lengths = dataset['length']
+            dataset = dataset.remove_columns('length')
+
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 
@@ -130,6 +145,12 @@ class ColBERTEncoder(MultiVectorEncoder):
         lengths = encodings.pop("length")
         dataset = Dataset.from_dict(encodings)
         dataset.set_format("torch")
+
+        if self.skiplist is not None:
+            dataset = dataset.map(lambda features: filter_input_ids(features, self.skiplist))
+            lengths = dataset['length']
+            dataset = dataset.remove_columns('length')
+
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
 

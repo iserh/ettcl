@@ -1,7 +1,7 @@
 from typing import Literal
-from ettcl.modeling import ColBERTModel, ColBERTTokenizer, SentenceColBERTModel, SentenceTokenizer, ColBERTConfig
+from ettcl.modeling import ColBERTModel, ColBERTTokenizer, SentenceColBERTModel, SentenceTokenizer, ColBERTConfig, BertForSequenceClassification
 from sentence_transformers import SentenceTransformer
-from transformers import AutoModelForSequenceClassification, AutoConfig, AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer
 from ettcl.indexing import FaissSingleVectorIndexer, ColBERTIndexer, ColBERTIndexerConfig, FaissIndexerConfig
 from ettcl.searching import FaissSingleVectorSearcher, ColBERTSearcher, ColBERTSearcherConfig
 from ettcl.encoding import ColBERTEncoder, STEncoder
@@ -23,6 +23,7 @@ class ClassificationPipeline:
         model_name_or_path: str,
         model_config_kwargs: dict = {},
         architecture: Literal['colbert', 'scolbert', 'sbert', 'bert'] = 'bert',
+        encoder_kwargs: dict = {},
         tokenizer_kwargs: dict = {},
         indexer_kwargs: dict = {},
         searcher_kwargs: dict = {},
@@ -37,23 +38,23 @@ class ClassificationPipeline:
         match self.architecture:
             case 'bert':
                 self.model_config = AutoConfig.from_pretrained(model_name_or_path, **model_config_kwargs)
-                self.model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, config=self.model_config)
+                self.model = BertForSequenceClassification.from_pretrained(model_name_or_path, config=self.model_config)
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
             case 'sbert':
                 self.model = SentenceTransformer(model_name_or_path)
                 self.model._first_module().tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
                 self.tokenizer = self.model._first_module()
-                self.encoder = STEncoder(self.model, normalize_embeddings=True)
+                self.encoder = STEncoder(self.model, **encoder_kwargs)
             case 'colbert':
                 self.model_config = ColBERTConfig.from_pretrained(model_name_or_path, **model_config_kwargs)
                 self.model = ColBERTModel.from_pretrained(model_name_or_path, config=self.model_config)
                 self.tokenizer = ColBERTTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
-                self.encoder = ColBERTEncoder(self.model, self.tokenizer)
+                self.encoder = ColBERTEncoder(self.model, self.tokenizer, **encoder_kwargs)
             case 'scolbert':
                 self.model_config = ColBERTConfig.from_pretrained(model_name_or_path, **model_config_kwargs)
                 self.model = SentenceColBERTModel.from_pretrained(model_name_or_path, config=self.model_config)
                 self.tokenizer = SentenceTokenizer.from_pretrained(model_name_or_path, **tokenizer_kwargs)
-                self.encoder = ColBERTEncoder(self.model, self.tokenizer)
+                self.encoder = ColBERTEncoder(self.model, self.tokenizer, **encoder_kwargs)
                 # only needed for sentence colbert
                 self.num_sentences = kwargs.pop('num_sentences', 16)
 
@@ -101,15 +102,15 @@ class ClassificationPipeline:
 
                 return [embs[offset:endpos] for offset, endpos in zip(offsets[:-1], offsets[1:])]
 
-    def predict(self, passages: list[str]) -> torch.LongTensor:
+    def predict(self, passages: list[str], use_cached_result: bool = False) -> torch.LongTensor:
         match self.architecture:
             case 'bert':
                 return self._head_predict(passages)
             case 'sbert' | 'colbert':
-                return self._knn_predict(passages)
+                return self._knn_predict(passages, use_cached_result)
             case 'scolbert':
                 passages = list(split_into_sentences(passages, self.num_sentences))
-                return self._knn_predict(passages)
+                return self._knn_predict(passages, use_cached_result)
 
     def _head_predict(self, passages: list[str]) -> torch.LongTensor:
 
@@ -125,12 +126,12 @@ class ClassificationPipeline:
 
         return torch.cat(preds)
 
-    def _knn_predict(self, passages: list[str]) -> torch.LongTensor:
+    def _knn_predict(self, passages: list[str], use_cached_result: bool = True) -> torch.LongTensor:
 
         if not hasattr(self, 'index_path'):
             raise RuntimeError("Index needs to be trained first.")
 
-        if not hasattr(self, 'search_result'):
+        if not hasattr(self, 'search_result') or not use_cached_result:
             self.search_result = Dataset.from_dict({'text': passages})
             torch.cuda.empty_cache()
             self.search_result = search_dataset(self.search_result, self.searcher, self.index_path, k=self.k)
