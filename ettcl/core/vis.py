@@ -12,6 +12,7 @@ def maxsim_view(
     D_mask: torch.LongTensor,
     Q_tokens: list[str] = None,
     D_tokens: list[str] = None,
+    max_only: bool = False,
 ):
     if scores.ndim == 3:
         scores = scores[0]
@@ -26,14 +27,17 @@ def maxsim_view(
     scores_max_only = scores.clone()
     scores_max_only[(scores < scores.max(0, keepdim=True).values)] = -9999
 
-    scores = torch.stack([scores, scores_max_only]).permute(0, 2, 1)
+    if max_only:
+        scores = scores_max_only.unsqueeze(0)
+    else:
+        scores = torch.stack([scores_max_only, scores])
 
     return head_view(
-        cross_attention=scores.unsqueeze(1).unsqueeze(1),
+        cross_attention=scores.permute(0, 2, 1).unsqueeze(1).unsqueeze(1),
         encoder_tokens=D_tokens if D_tokens is not None else [f"D[{i}]" for i in range(scores.shape[-1])],
         decoder_tokens=Q_tokens if Q_tokens is not None else [f"Q[{i}]" for i in range(scores.shape[-2])],
         html_action="return",
-        layer=1,
+        layer=0,
     )
 
 
@@ -43,6 +47,7 @@ def explain_scores(
     query: str,
     doc: str,
     use_gpu: bool = True,
+    max_only: bool = False,
 ):
     q_inputs = tokenizer(query, mode="query", return_tensors="pt")
     d_inputs = tokenizer(doc, mode="doc", return_tensors="pt")
@@ -73,4 +78,4 @@ def explain_scores(
 
     scores = colbert_score(Q, D)
 
-    return maxsim_view(scores, Q_mask, D_mask, q_tokens, d_tokens)
+    return maxsim_view(scores, Q_mask, D_mask, q_tokens, d_tokens, max_only=max_only)

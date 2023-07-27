@@ -146,7 +146,7 @@ class ClassificationPipeline:
 
         return self.predictions
 
-    def explain_prediction(self, idx: int, match_idx: int, true_labels: list[int] | None = None):
+    def explain_prediction(self, idx: int, match_idx: int, true_labels: list[int] | None = None, max_only: bool = False):
         if not hasattr(self, "search_result"):
             raise RuntimeError(
                 "This pipeline has no search results stored. This can either be because the selected "
@@ -175,6 +175,7 @@ class ClassificationPipeline:
             tokenizer=self.tokenizer,
             query=test_example[self.text_column],
             doc=matches[self.text_column][match_idx],
+            max_only=max_only,
         )
 
     def _head_predict(self, passages: list[str], labels: list[int] | None = None) -> torch.LongTensor:

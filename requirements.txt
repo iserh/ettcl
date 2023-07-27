@@ -1,5 +1,6 @@
 -e .
 accelerate
+bertviz
 checksumdir
 datasets
 distinctipy
