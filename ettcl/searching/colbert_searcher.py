@@ -91,7 +91,9 @@ class ColBERTSearcher(Searcher):
             self.ranker.cpu()
 
         if self.config.filter_pids is not None:
-            filter_pids = torch.tensor(self.config.filter_pids, device=torch.cuda.current_device() if use_gpu else 'cpu')
+            filter_pids = torch.tensor(
+                self.config.filter_pids, device=torch.cuda.current_device() if use_gpu else "cpu"
+            )
             self.filter_fn = lambda pids: pids[~torch.isin(pids, filter_pids)]
         else:
             self.filter_fn = None

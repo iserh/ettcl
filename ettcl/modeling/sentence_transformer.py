@@ -9,18 +9,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.models import Transformer, Pooling
+from sentence_transformers.models import Pooling, Transformer
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
 
-def sentence_transformer_factory(model_name_or_path: str, pooling: str = 'mean') -> SentenceTransformer:
+def sentence_transformer_factory(model_name_or_path: str, pooling: str = "mean") -> SentenceTransformer:
     transformer_model = Transformer(model_name_or_path)
     pooling_model = Pooling(transformer_model.get_word_embedding_dimension(), pooling)
     return SentenceTransformer(modules=[transformer_model, pooling_model])
 
 
-def sentence_transformer_for_reranking_factory(model_name_or_path: str, pooling: str = 'mean') -> SentenceTransformerForReranking:
+def sentence_transformer_for_reranking_factory(
+    model_name_or_path: str, pooling: str = "mean"
+) -> SentenceTransformerForReranking:
     transformer_model = Transformer(model_name_or_path)
     pooling_model = Pooling(transformer_model.get_word_embedding_dimension(), pooling)
     return SentenceTransformerForReranking(modules=[transformer_model, pooling_model])

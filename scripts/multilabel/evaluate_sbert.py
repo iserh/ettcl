@@ -8,10 +8,10 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 
 from ettcl.core.evaluate_mlc import EvaluatorMLC, EvaluatorMLCConfig
-from ettcl.modeling import sentence_transformer_factory
 from ettcl.encoding import STEncoder
 from ettcl.indexing import FaissIndexerConfig, FaissSingleVectorIndexer
 from ettcl.logging import configure_logger
+from ettcl.modeling import sentence_transformer_factory
 from ettcl.searching import FaissSingleVectorSearcher
 from ettcl.utils import seed_everything
 

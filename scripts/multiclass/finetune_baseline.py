@@ -6,16 +6,11 @@ from pathlib import Path
 import wandb
 from datasets import load_from_disk
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from transformers import (
-    AutoTokenizer,
-    EvalPrediction,
-    Trainer,
-    TrainingArguments,
-)
+from transformers import AutoTokenizer, EvalPrediction, Trainer, TrainingArguments
 
 from ettcl.logging import configure_logger
-from ettcl.utils import seed_everything
 from ettcl.modeling import BertForSequenceClassification
+from ettcl.utils import seed_everything
 
 
 def compute_metrics(eval_prediction: EvalPrediction) -> dict:

@@ -98,7 +98,7 @@ class SentenceColBERTForReranking(ColBERTForReranking):
             return_dict=return_dict,
         )
 
-        scores, unreduced_scores = self.compute_scores(
+        scores, unreduced_scores, D_mask = self.compute_scores(
             sequence_output=outputs[0],
             attention_mask=attention_mask.any(-1),
             nway=nway,
@@ -120,5 +120,6 @@ class SentenceColBERTForReranking(ColBERTForReranking):
             loss=loss.unsqueeze(0),
             scores=scores,
             unreduced_scores=unreduced_scores,
+            doc_mask=D_mask,
             hidden_states=outputs.hidden_states,
         )

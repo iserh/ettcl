@@ -1,16 +1,16 @@
-from typing import Generator
 import itertools
 import json
 import os
 import random
 import re
-from datasets import Dataset
 from collections.abc import Iterable, Iterator
 from logging import getLogger
 from time import perf_counter
+from typing import Generator
 
 import numpy as np
 import torch
+from datasets import Dataset
 
 logger = getLogger(__name__)
 Devices = int | bool | list[int] | list[str] | None
@@ -34,14 +34,14 @@ class Checkpoint:
         assert os.path.exists(self.best), f"{self.best} does not exist."
 
 
-def knn_classify(index_dataset_or_labels, test_dataset_or_pids, k: int = 10, label_column: str = 'label'):
+def knn_classify(index_dataset_or_labels, test_dataset_or_pids, k: int = 10, label_column: str = "label"):
     if isinstance(index_dataset_or_labels, Dataset):
-        index_labels = index_dataset_or_labels.with_format('torch')[label_column]
+        index_labels = index_dataset_or_labels.with_format("torch")[label_column]
     else:
         index_labels = torch.tensor(index_dataset_or_labels)
 
     if isinstance(index_dataset_or_labels, Dataset):
-        match_pids = test_dataset_or_pids.with_format('torch')['match_pids']
+        match_pids = test_dataset_or_pids.with_format("torch")["match_pids"]
 
     match_pids = torch.nn.utils.rnn.pad_sequence(list(match_pids), batch_first=True, padding_value=-1)
     match_labels = index_labels[match_pids.tolist()]

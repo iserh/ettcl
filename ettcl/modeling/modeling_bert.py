@@ -1,9 +1,11 @@
-from transformers import BertPreTrainedModel, BertModel
-from transformers.modeling_outputs import SequenceClassifierOutput
+from typing import Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-from torch.nn import MSELoss, CrossEntropyLoss, BCEWithLogitsLoss
-from typing import Optional, Tuple, Union
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers import BertModel, BertPreTrainedModel
+from transformers.modeling_outputs import SequenceClassifierOutput
+
 
 class BertForSequenceClassification(BertPreTrainedModel):
     def __init__(self, config):

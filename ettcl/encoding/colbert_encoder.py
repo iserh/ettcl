@@ -22,11 +22,8 @@ def sort_by_length(dataset: Dataset, lengths: list[int]) -> tuple[Dataset, torch
 
 
 def filter_input_ids(features: dict, filter_ids: torch.Tensor):
-    filter_mask = ~torch.isin(features['input_ids'], filter_ids)
-    return {
-        "length": filter_mask.sum(),
-        **{k: v[~filter_mask] for k, v in features.items()}
-    }
+    filter_mask = ~torch.isin(features["input_ids"], filter_ids)
+    return {"length": filter_mask.sum(), **{k: v[~filter_mask] for k, v in features.items()}}
 
 
 class ColBERTEncoder(MultiVectorEncoder):
@@ -90,8 +87,8 @@ class ColBERTEncoder(MultiVectorEncoder):
 
         if self.skiplist is not None:
             dataset = dataset.map(lambda features: filter_input_ids(features, self.skiplist))
-            lengths = dataset['length']
-            dataset = dataset.remove_columns('length')
+            lengths = dataset["length"]
+            dataset = dataset.remove_columns("length")
 
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)
@@ -148,8 +145,8 @@ class ColBERTEncoder(MultiVectorEncoder):
 
         if self.skiplist is not None:
             dataset = dataset.map(lambda features: filter_input_ids(features, self.skiplist))
-            lengths = dataset['length']
-            dataset = dataset.remove_columns('length')
+            lengths = dataset["length"]
+            dataset = dataset.remove_columns("length")
 
         dataset, reverse_indices = sort_by_length(dataset, lengths)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=self.data_collator)

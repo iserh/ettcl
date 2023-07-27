@@ -29,6 +29,7 @@ class ColbertRerankingOutput(ModelOutput):
     loss: torch.Tensor | None = None
     scores: torch.Tensor | None = None
     unreduced_scores: torch.Tensor | None = None
+    doc_mask: torch.Tensor | None = None
     hidden_states: tuple[torch.FloatTensor] | None = None
 
 
@@ -189,7 +190,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
             return_dict=return_dict,
         )
 
-        scores, unreduced_scores = self.compute_scores(
+        scores, unreduced_scores, D_mask = self.compute_scores(
             sequence_output=outputs[0],
             attention_mask=attention_mask,
             nway=nway,
@@ -211,6 +212,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
             loss=loss.unsqueeze(0),
             scores=scores,
             unreduced_scores=unreduced_scores,
+            doc_mask=D_mask,
             hidden_states=outputs.hidden_states,
         )
 
@@ -239,7 +241,7 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         # reduce these scores via `MaxSim`
         scores = maxsim_reduction(unreduced_scores, D_mask).view(-1, nway - 1)
 
-        return scores, unreduced_scores
+        return scores, unreduced_scores, D_mask
 
     def compute_loss(
         self,

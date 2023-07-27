@@ -7,10 +7,10 @@ from datasets import load_from_disk
 from transformers import AutoTokenizer
 
 from ettcl.core.evaluate import Evaluator, EvaluatorConfig
-from ettcl.modeling import sentence_transformer_factory
 from ettcl.encoding import STEncoder
 from ettcl.indexing import FaissIndexerConfig, FaissSingleVectorIndexer
 from ettcl.logging import configure_logger
+from ettcl.modeling import sentence_transformer_factory
 from ettcl.searching import FaissSingleVectorSearcher
 from ettcl.utils import seed_everything
 
