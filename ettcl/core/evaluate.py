@@ -57,7 +57,8 @@ def evaluate(
     for k in ks:
         knn = match_labels[:, :k]
         y_pred = torch.mode(knn)[0]
-        assert -1 not in y_pred, "Not enough matches"
+        if -1 in y_pred:
+            logger.warning("Not enough matches")
 
         metrics[f"{metric_key_prefix}_accuracy/{k}"] = accuracy_score(y_pred=y_pred, y_true=eval_dataset[label_column])
         metrics[f"{metric_key_prefix}_precision/micro/{k}"] = precision_score(
