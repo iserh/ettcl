@@ -106,7 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--training_metric_for_best_model", type=str, default="f1/micro")
     parser.add_argument("--training_max_steps", type=int)
     parser.add_argument("--training_num_train_epochs", type=int)
-    parser.add_argument("--training_per_device_train_batch_size", type=int, default=4)
+    parser.add_argument("--training_per_device_train_batch_size", type=int)
     parser.add_argument("--training_gradient_accumulation_steps", type=int)
     parser.add_argument("--training_dataloader_num_workers", type=int)
     parser.add_argument("--training_early_stopping_patience", type=int)

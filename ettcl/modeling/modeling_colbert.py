@@ -151,11 +151,18 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         self,
         config: ColBERTConfig,
         base_model_class: type[PreTrainedModel] = None,
+        query_token_id: int | None = 1,
+        doc_token_id: int | None = 2,
+        query_token_pos: int | None = 1,
     ) -> None:
         super().__init__(config)
         self.config = config
         self.colbert = ColBERTModel(config, base_model_class)
         self.register_buffer("default_labels", torch.zeros(1, dtype=torch.int64))
+
+        self.query_token_id = query_token_id
+        self.doc_token_id = doc_token_id
+        self.query_token_pos = query_token_pos
 
     def forward(
         self,
@@ -171,6 +178,10 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         batch_size = input_ids.shape[0]
         nway = input_ids.shape[1]
         input_length = input_ids.shape[2]
+
+        # set query token in first element of each nway triple
+        if self.query_token_id is not None:
+            input_ids[:, 0, self.query_token_pos] = self.query_token_id
 
         outputs = self.colbert(
             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,

@@ -53,8 +53,8 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
             )
         )
 
-        self.query_token = query_token
-        self.doc_token = doc_token
+        self.query_token = query_token if query_token != '' else None
+        self.doc_token = doc_token if doc_token != '' else None
         self.query_maxlen = query_maxlen
         self.doc_maxlen = doc_maxlen
         self.query_augmentation = query_augmentation
@@ -73,11 +73,42 @@ class ColBERTTokenizer(wrapt.ObjectProxy):
                 "to match the models embedding matrix."
             )
 
+    @property
+    def query_token_id(self) -> int | None:
+        if self.query_token is not None and self.query_token != '':
+            return self.convert_tokens_to_ids(self.query_token)
+        else:
+            return None
+
+    @property
+    def doc_token_id(self) -> int | None:
+        if self.doc_token is not None and self.doc_token != '':
+            return self.convert_tokens_to_ids(self.doc_token)
+        else:
+            return None
+
+    @property
+    def query_token_position(self) -> int | None:
+        if self.query_token is not None or self.query_token != '':
+            # either 1 or 0 if no special [CLS] token
+            return int(self.def_add_special_tokens)
+        else:
+            return None
+
+    @property
+    def doc_token_position(self) -> int | None:
+        if self.doc_token is not None or self.doc_token != '':
+            # either 1 or 0 if no special [CLS] token
+            return int(self.def_add_special_tokens)
+        else:
+            return None
+
     @classmethod
     def from_pretrained(
         cls, pretrained_model_name_or_path: str | os.PathLike, *init_inputs, **kwargs
     ) -> ColBERTTokenizer | PreTrainedTokenizerBase:
         tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path, *init_inputs, **kwargs)
+        tokenizer.convert_tokens_to_ids
         return cls(tokenizer, *init_inputs, **kwargs)
 
     def tokenize(

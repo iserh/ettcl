@@ -29,9 +29,14 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         datetime.now().isoformat(),
     )
 
-    model_config = ColBERTConfig.from_pretrained(params["model"]["value"], **params["model_config"]["value"])
-    model = ColBERTForReranking.from_pretrained(params["model"]["value"], config=model_config)
     tokenizer = ColBERTTokenizer.from_pretrained(params["model"]["value"], **params["tokenizer"]["value"])
+    model_config = ColBERTConfig.from_pretrained(params["model"]["value"], **params["model_config"]["value"])
+    model = ColBERTForReranking.from_pretrained(
+        params["model"]["value"],
+        config=model_config,
+        query_token_id=tokenizer.query_token_id,
+        query_token_pos=tokenizer.query_token_position,
+    )
     encoder = ColBERTEncoder(model.colbert, tokenizer)
 
     indexer_config = ColBERTIndexerConfig(**params["indexer"]["value"])
