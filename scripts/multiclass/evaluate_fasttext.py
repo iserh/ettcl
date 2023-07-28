@@ -43,6 +43,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
     config = EvaluatorConfig(output_dir, **params["config"]["value"])
 
     dataset = load_from_disk(params["dataset"]["value"])
+    dataset = dataset.filter(len, input_columns="text")
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]
 

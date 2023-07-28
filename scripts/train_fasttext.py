@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from pathlib import Path
 
 from datasets import load_from_disk, Split
@@ -9,7 +10,7 @@ import os
 
 configure_logger("INFO")
 
-dataset_path = "/home/IAIS/hiser/data/imdb"
+dataset_path = "/home/IAIS/hiser/data/trec-6"
 dataset_name = os.path.basename(dataset_path)
 text_column = "text"
 label_column = "label"
@@ -27,7 +28,7 @@ dataset = dataset.map(
     num_proc=8,
 )
 
-model = FastText(vector_size=128, window=5, min_count=5, word_ngrams=1)
+model = FastText(vector_size=128, window=5, min_count=1, word_ngrams=1)
 model.build_vocab(corpus_iterable=dataset["tokens"])
 total_words = model.corpus_total_words
 total_examples = model.corpus_count
