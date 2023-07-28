@@ -59,6 +59,17 @@ def str2bool(v):
         raise ArgumentTypeError("Boolean value expected.")
 
 
+def intorfloat(v):
+    if isinstance(v, (int, float)):
+        return v
+    if int(v) > 1:
+        return int(v)
+    if float(v) <= 1 and float(v) >= 0:
+        return float(v)
+    else:
+        raise ArgumentTypeError("Float or Int > 0 expected.")
+
+
 if __name__ == "__main__":
     import importlib
     import warnings
@@ -95,7 +106,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--training_optim", type=str, default="adamw_torch")
     parser.add_argument("--training_log_level", type=str)
-    parser.add_argument("--training_save_total_limit", type=int, default=1)
+    parser.add_argument("--training_save_total_limit", type=int, default=2)
     parser.add_argument("--training_save_strategy", type=str, default="epoch")
     parser.add_argument("--training_save_steps", type=int, default=1)
     parser.add_argument("--training_logging_steps", type=int, default=100)
@@ -140,8 +151,8 @@ if __name__ == "__main__":
     parser.add_argument("--config_eval_interval", type=int)
     parser.add_argument("--config_dev_eval_interval", type=int)
     parser.add_argument("--config_searcher_sampling_k", type=int)
-    parser.add_argument("--config_subsample_train", type=float)
-    parser.add_argument("--config_subsample_eval", type=float)
+    parser.add_argument("--config_subsample_train", type=intorfloat)
+    parser.add_argument("--config_subsample_eval", type=intorfloat)
     parser.add_argument("--config_final_subsample_train", type=float)
     parser.add_argument("--config_label_column", type=str)
     parser.add_argument("--config_text_column", type=str)
