@@ -62,10 +62,10 @@ def str2bool(v):
 def intorfloat(v):
     if isinstance(v, (int, float)):
         return v
-    if int(v) > 1:
-        return int(v)
-    if float(v) <= 1 and float(v) >= 0:
+    elif float(v) <= 1 and float(v) >= 0:
         return float(v)
+    elif int(v) > 1:
+        return int(v)
     else:
         raise ArgumentTypeError("Float or Int > 0 expected.")
 
