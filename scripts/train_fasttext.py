@@ -28,7 +28,7 @@ dataset = dataset.map(
     num_proc=8,
 )
 
-model = FastText(vector_size=128, window=5, min_count=1, word_ngrams=1)
+model = FastText(vector_size=128, window=5, min_count=5, word_ngrams=1)
 model.build_vocab(corpus_iterable=dataset["tokens"])
 total_words = model.corpus_total_words
 total_examples = model.corpus_count
