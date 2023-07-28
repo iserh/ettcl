@@ -115,9 +115,13 @@ class TripleSamplingDataBuilder:
                 ~np.isin(pids_with_same_label, positive_pids, assume_unique=True)
             ]
             positive_fill_pids = np.random.choice(non_retrieved_positives, size=missing_pos)
-            positive_pids = np.concatenate([positive_pids, positive_fill_pids])
-            fill_scores = np.full(missing_pos, fill_value=positive_scores.min() if len(positive_scores) else 1)
-            positive_scores = np.concatenate([positive_scores, fill_scores])
+            if not len(positive_fill_pids):
+                logger.warning("No positive pid exists, using identity.")
+                positive_pids = np.array([idx])
+            else:
+                positive_pids = np.concatenate([positive_pids, positive_fill_pids])
+                fill_scores = np.full(missing_pos, fill_value=positive_scores.min() if len(positive_scores) else 1)
+                positive_scores = np.concatenate([positive_scores, fill_scores])
 
         # matched pids that have different label
         negative_pids = match_pids[~same_label_mask]
