@@ -43,24 +43,17 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
 
     config = EvaluatorMLCConfig(output_dir, **params["config"]["value"])
 
+    num_sentences = params["num_sentences"]["value"]
     dataset = load_from_disk(params["dataset"]["value"])
+    dataset = dataset.map(
+        lambda text: {"sents": split_into_sentences(text, num_sentences)},
+        input_columns="text",
+        remove_columns="text",
+        desc="split_into_sentences",
+    ).filter(len, input_columns="sents")
+
     train_dataset = dataset["train"]
     test_dataset = dataset["test"]
-
-    num_sentences = params["num_sentences"]["value"]
-    train_dataset = train_dataset.map(
-        lambda text: {"sents": split_into_sentences(text, num_sentences)},
-        input_columns="text",
-        remove_columns="text",
-        desc="split_into_sentences",
-    )
-
-    test_dataset = test_dataset.map(
-        lambda text: {"sents": split_into_sentences(text, num_sentences)},
-        input_columns="text",
-        remove_columns="text",
-        desc="split_into_sentences",
-    )
 
     config.text_column = "sents"
 

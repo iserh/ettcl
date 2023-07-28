@@ -79,7 +79,8 @@ class SentenceTokenizer(ColBERTTokenizer):
         offsets = [0, *np.cumsum(num_sentences)]
         for offset, endpos in zip(offsets[:-1], offsets[1:]):
             encodings = {k: v[offset:endpos] for k, v in encodings_flatten.items()}
-            padded = super().pad(encodings, return_tensors="pt", **kwargs)
+            padded = super().pad(encodings, return_tensors="pt", padding="max_length", **kwargs)
+            assert isinstance(padded['input_ids'], torch.Tensor), "not a tensor"
             for k, v in padded.items():
                 sent_encodings[k].append(v)
 
