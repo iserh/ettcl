@@ -89,9 +89,9 @@ class ColBERTModel(ColBERTPreTrainedModel):
         self.output_dimensionality = self.config.compression_dim or base_model.get_input_embeddings().weight.shape[-1]
 
         # set the correct base_model_prefix
-        self.lm_base_model_prefix = base_model.base_model_prefix
+        self.base_model_prefix = base_model.base_model_prefix
         # set base model as attribute
-        setattr(self, self.lm_base_model_prefix, base_model)
+        setattr(self, self.base_model_prefix, base_model)
 
         # add final compression layer if compression_dim is defined
         self.linear = (
@@ -105,7 +105,7 @@ class ColBERTModel(ColBERTPreTrainedModel):
 
     @property
     def LM(self) -> PreTrainedModel:
-        return getattr(self, self.lm_base_model_prefix)
+        return getattr(self, self.base_model_prefix)
 
     def freeze_base_model(self) -> None:
         for param in self.LM.parameters():
