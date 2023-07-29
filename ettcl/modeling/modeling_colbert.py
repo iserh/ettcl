@@ -35,7 +35,6 @@ class ColbertRerankingOutput(ModelOutput):
 
 class ColBERTPreTrainedModel(PreTrainedModel):
     config_class = ColBERTConfig
-    base_model_prefix = "colbert"
 
     # these will be filled in the `from_pretrained` method
     _keys_to_ignore_on_load_missing = set()
@@ -147,6 +146,7 @@ class ColBERTModel(ColBERTPreTrainedModel):
 class ColBERTForReranking(ColBERTPreTrainedModel):
     _keys_to_ignore_on_load_missing = set(["default_labels"])
     _keys_to_ignore_on_save = set(["default_labels"])
+    base_model_prefix = "colbert"
 
     def __init__(
         self,
