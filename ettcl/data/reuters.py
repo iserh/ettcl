@@ -12,8 +12,11 @@ def Reuters(mlc: bool = True):
     test_dataset = load_dataset("reuters21578", "ModApte", split="test")
     test_dataset = test_dataset.select_columns(["topics", "text"])
 
+    train_dataset = train_dataset.filter(len, input_columns="text")
+    test_dataset = test_dataset.filter(len, input_columns="text")
+
     c = count_labels(train_dataset, "topics", multilabel=True)
-    c = {k: v for k, v in c.items() if v >= 10}
+    c = {k: v for k, v in c.items() if v >= 2}
 
     train_dataset = train_dataset.map(
         lambda topics: {"topics": [t for t in topics if t in c.keys()]}, input_columns="topics"
@@ -84,8 +87,12 @@ def Reuters(mlc: bool = True):
 
 
 if __name__ == "__main__":
-    # dataset = Reuters(mlc=True)
-    # dataset.save_to_disk("~/data/ReutersMLC")
+    import os
+
+    data_path = os.path.expanduser("~/data")
+
+    dataset = Reuters(mlc=True)
+    dataset.save_to_disk(os.path.join(data_path, "ReutersMLC-fixed"))
 
     dataset = Reuters(mlc=False)
-    dataset.save_to_disk("~/data/ReutersCLS")
+    dataset.save_to_disk(os.path.join(data_path, "ReutersCLS-fixed"))

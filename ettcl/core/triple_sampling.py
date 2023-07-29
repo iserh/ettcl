@@ -99,6 +99,8 @@ class TripleSamplingDataBuilder:
         pids_with_same_label = pids_with_same_label[pids_with_same_label != idx]
         same_label_mask = np.isin(match_pids, pids_with_same_label, assume_unique=True)
 
+        assert len(pids_with_same_label), f"There exist only 1 pid with label {label}, check your data preprocessing."
+
         n_positives = min(self.n_positives, len(pids_with_same_label))
         n_negatives = min(self.n_negatives, len(pids_with_different_label))
 
@@ -114,14 +116,10 @@ class TripleSamplingDataBuilder:
             non_retrieved_positives = pids_with_same_label[
                 ~np.isin(pids_with_same_label, positive_pids, assume_unique=True)
             ]
-            positive_fill_pids = np.random.choice(non_retrieved_positives, size=missing_pos)
-            if not len(positive_fill_pids):
-                logger.warning("No positive pid exists, using identity.")
-                positive_pids = np.array([idx])
-            else:
-                positive_pids = np.concatenate([positive_pids, positive_fill_pids])
-                fill_scores = np.full(missing_pos, fill_value=positive_scores.min() if len(positive_scores) else 1)
-                positive_scores = np.concatenate([positive_scores, fill_scores])
+            positive_fill_pids = np.random.choice(non_retrieved_positives, size=missing_pos, replace=len(non_retrieved_positives) < missing_pos)
+            positive_pids = np.concatenate([positive_pids, positive_fill_pids])
+            fill_scores = np.full(missing_pos, fill_value=positive_scores.min() if len(positive_scores) else 1)
+            positive_scores = np.concatenate([positive_scores, fill_scores])
 
         # matched pids that have different label
         negative_pids = match_pids[~same_label_mask]
@@ -523,9 +521,8 @@ class DataCollatorForTriples(DataCollatorWithPadding):
 
 
 def subsample(dataset: Dataset, size: int | float | None, stratify: bool = True, label_column: str = "label"):
-    logger.info(f"subsample fac={size} from {len(dataset)}")
-
     if size is not None:
+        logger.info(f"subsample fac={size} from {len(dataset)}")
         return dataset.train_test_split(
             train_size=size,
             stratify_by_column=label_column if stratify else None,

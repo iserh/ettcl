@@ -61,7 +61,7 @@ def main(params: dict, log_level: str | int = "INFO") -> None:
         input_columns="text",
         remove_columns="text",
         desc="split_into_sentences",
-    ).filter(len, input_columns="sents")
+    )
 
     train_dataset = dataset["train"]
     val_dataset = dataset["validation"]
