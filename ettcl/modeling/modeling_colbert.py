@@ -180,10 +180,9 @@ class ColBERTForReranking(ColBERTPreTrainedModel):
         nway = input_ids.shape[1]
         input_length = input_ids.shape[2]
 
-        # TODO: uncomment
-        # # set query token in first element of each nway triple
-        # if self.query_token_id is not None:
-        #     input_ids[:, 0, self.query_token_pos] = self.query_token_id
+        # set query token in first element of each nway triple
+        if self.query_token_id is not None:
+            input_ids[:, 0, self.query_token_pos] = self.query_token_id
 
         outputs = self.colbert(
             input_ids=input_ids.view(-1, input_length) if input_ids is not None else None,
