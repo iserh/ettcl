@@ -20,8 +20,12 @@ def TREC(label_column: str = "coarse_label"):
 
 
 if __name__ == "__main__":
+    import os
+
+    data_path = os.path.expanduser("~/data")
+
     dataset = TREC("coarse_label")
-    dataset.save_to_disk("~/data/trec-6")
+    dataset.save_to_disk(os.path.join(data_path, "trec-6"))
 
     dataset = TREC("fine_label")
-    dataset.save_to_disk("~/data/trec-50")
+    dataset.save_to_disk(os.path.join(data_path, "trec-50"))
