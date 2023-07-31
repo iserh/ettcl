@@ -15,5 +15,9 @@ def IMDB():
 
 
 if __name__ == "__main__":
+    import os
+
+    data_path = os.path.expanduser("~/data")
+
     dataset = IMDB()
-    dataset.save_to_disk("~/data/imdb")
+    dataset.save_to_disk(os.path.join(data_path, "imdb"))

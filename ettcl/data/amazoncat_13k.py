@@ -49,5 +49,9 @@ def AmazonCat_13K() -> DatasetDict:
 
 
 if __name__ == "__main__":
+    import os
+
+    data_path = os.path.expanduser("~/data")
+
     dataset = AmazonCat_13K()
-    dataset.save_to_disk("~/data/AmazonCat-13K")
+    dataset.save_to_disk(os.path.join(data_path, "AmazonCat-13K"))
