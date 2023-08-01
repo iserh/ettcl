@@ -188,6 +188,8 @@ class TripleSamplingDataBuilder:
         # pids that have different label
         negative_pids = np.concatenate([self.pids_for_label[l] for l in self.unique_labels if l != label])
 
+        assert len(positive_pids), f"There exist only 1 pid with label {label}, check your data preprocessing."
+
         return {
             "positive_pids": positive_pids.tolist(),
             "negative_pids": negative_pids.tolist(),
