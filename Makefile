@@ -27,7 +27,6 @@ lint:
 	flake8 $$(find ettcl/ tests/ scripts/ -type f -name '*.py')
 
 clean:
-	find . -type d -name __pycache__ -prune -exec rm -rf {} \;
 	find . -type d -name .ipynb_checkpoints -prune -exec rm -rf {} \;
 	find . -type d -name *.egg-info -prune -exec rm -rf {} \;
 	./scripts/cleanup.py
